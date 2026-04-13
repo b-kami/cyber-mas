@@ -1,0 +1,12 @@
+groq
+faiss-cpu
+sentence-transformers
+tldextract
+dnspython
+textblob
+pandas
+requests
+python-dotenv
+pydantic
+rich
+python-nmap
