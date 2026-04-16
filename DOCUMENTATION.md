@@ -646,6 +646,14 @@ pip install -r requirements.txt
 # 5. Create your .env file from the template
 cp .env.example .env
 # Then edit .env and add your actual API keys
+
+# 6. Download the SpamAssassin public corpus
+cd data/raw_emails/
+curl -LO https://spamassassin.apache.org/old/publiccorpus/20030228_spam.tar.bz2
+curl -LO https://spamassassin.apache.org/old/publiccorpus/20030228_easy_ham.tar.bz2
+tar -xjf 20030228_spam.tar.bz2
+tar -xjf 20030228_easy_ham.tar.bz2
+cd ../..
 ```
 
 ### Testing Individual Components

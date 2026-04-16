@@ -117,13 +117,24 @@ GROQ_API_KEY=gsk_...        # https://console.groq.com
 NVD_API_KEY=xxxxxxxx...     # https://nvd.nist.gov/developers/request-an-api-key
 ```
 
-### 5. Verify the LLM connection
+### 5. Download the SpamAssassin Corpus (for Email Agent)
+
+```bash
+cd data/raw_emails/
+curl -LO https://spamassassin.apache.org/old/publiccorpus/20030228_spam.tar.bz2
+curl -LO https://spamassassin.apache.org/old/publiccorpus/20030228_easy_ham.tar.bz2
+tar -xjf 20030228_spam.tar.bz2
+tar -xjf 20030228_easy_ham.tar.bz2
+cd ../..
+```
+
+### 6. Verify the LLM connection
 
 ```bash
 python tools/llm_client.py
 ```
 
-### 6. Run the system
+### 7. Run the system
 
 ```bash
 python main.py
