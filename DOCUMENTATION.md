@@ -134,14 +134,14 @@ cyber-mas/
 │   ├── log_agent.py      # System/network log analyzer agent (stub)
 │   ├── ip_agent.py       # IP range/vulnerability scanner agent (stub)
 │   ├── correlator.py     # Cross-domain signal correlator (stub)
-│   └── dispatcher.py     # Task router to specialized agents (stub)
+│   └── dispatcher.py     # ✅ DONE — Task router with auto-detection logic
 │
 ├── tools/                # Shared utilities used by agents
 │   ├── __init__.py       # Package marker
 │   ├── llm_client.py     # ✅ DONE — Groq API wrapper (LLaMA 3.3-70B)
 │   ├── prompts.py        # ✅ DONE — All chain-of-thought prompt templates
 │   ├── nvd_client.py     # ✅ DONE — NVD REST API client for CVE lookups
-│   └── faiss_store.py    # FAISS vector store for similarity search (stub)
+│   └── faiss_store.py    # ✅ DONE — FAISS vector store for similarity search
 │
 ├── data/                 # Data directories for agent inputs
 │   ├── faiss_index/      # FAISS index files (auto-generated, git-ignored content)
@@ -385,16 +385,72 @@ def fetch_cves_for_hosts(scan_results: list[dict]) -> list[dict]:
 
 ### 6.4 `faiss_store.py` — Vector Similarity Search
 
-**Status: 🔲 Stub (not yet implemented)**
+**Status: ✅ Fully implemented and tested**
 
-**Planned Purpose:** Provides a FAISS-based vector store that converts text (email bodies, phishing samples) into numerical embeddings using `sentence-transformers`, indexes them with FAISS, and allows the email agent to find the most similar known phishing sample for a given input email.
+**Purpose:** Provides a FAISS-based vector store that converts email text into 384-dimensional numerical embeddings using `sentence-transformers` (all-MiniLM-L6-v2), indexes them with FAISS, and allows the email agent to find the most similar known phishing sample for a given input email.
 
-**Expected Workflow:**
-1. Load known phishing email samples from `data/raw_emails/`
-2. Encode them into 384-dimensional vectors using `all-MiniLM-L6-v2`
-3. Build a FAISS index and save it to `data/faiss_index/`
-4. At analysis time, encode the input email and search the index
-5. Return the distance score and the closest matching sample text
+**Public API:**
+
+```python
+def build_index(emails_dir, index_dir, force=False) -> None:
+    """One-time setup: load corpus, encode, save .index + meta.json"""
+
+def query(email_text: str, k: int = 1) -> list[dict]:
+    """Find the k nearest neighbours in the FAISS index"""
+
+def is_index_ready() -> bool:
+    """Return True if the FAISS index files exist on disk"""
+```
+
+**How `build_index()` works:**
+
+1. Recursively walks `data/raw_emails/` and loads every email file
+2. Parses RFC-2822 email format using Python's `email` module (handles multipart, charset detection)
+3. Labels each email as `spam` or `ham` based on parent directory name
+4. Encodes all text into 384-dimensional vectors using `all-MiniLM-L6-v2` (batched, normalized)
+5. Builds a `faiss.IndexFlatL2` index (exact L2 search — good enough for <10k documents)
+6. Saves the index to `data/faiss_index/emails.index`
+7. Saves metadata (label, excerpt, source file) to `data/faiss_index/meta.json`
+
+**How `query()` works:**
+
+1. Lazily loads the FAISS index, metadata, and sentence-transformer model (singletons)
+2. Encodes the input email text into a 384-dim vector
+3. Searches the FAISS index for the `k` nearest neighbours
+4. Returns a list of dicts with: `distance`, `similarity` (normalized 0–1), `label`, `excerpt`, `source_file`
+
+**Corpus: SpamAssassin Public Dataset**
+
+The project uses the [SpamAssassin public corpus](https://spamassassin.apache.org/old/publiccorpus/) which has been downloaded and extracted into:
+- `data/raw_emails/spam/` — ~500 spam email samples
+- `data/raw_emails/easy_ham/` — ~2500 legitimate (ham) email samples
+
+**Index Files (auto-generated):**
+
+| File                              | Description                                   |
+|-----------------------------------|-----------------------------------------------|
+| `data/faiss_index/emails.index`   | FAISS IndexFlatL2 binary                      |
+| `data/faiss_index/meta.json`      | Array of {label, excerpt, source_file} objects |
+
+**Internal Helper Functions:**
+
+| Function              | Purpose                                                           |
+|-----------------------|-------------------------------------------------------------------|
+| `_label_from_path()`  | Infers spam/ham label from parent directory name                  |
+| `_parse_email_text()` | Extracts plain-text body from RFC-2822 email bytes                |
+| `_load_corpus()`      | Recursively loads all email files under a directory               |
+| `_ensure_loaded()`    | Lazily loads index + model singletons on first query              |
+
+**Constants:**
+
+| Constant        | Value              | Explanation                                  |
+|-----------------|--------------------|----------------------------------------------|
+| `MODEL_NAME`    | `all-MiniLM-L6-v2` | 22M param sentence-transformer, 384-dim      |
+| `EXCERPT_CHARS` | `400`              | Characters stored in metadata for context    |
+| `BATCH_SIZE`    | `64`               | Encoding batch size (tune down if OOM)       |
+| `MAX_EMAILS`    | `10,000`           | Safety cap on corpus size                    |
+
+**Self-test:** Run `python tools/faiss_store.py --build` to build the index, then `python tools/faiss_store.py --query "You have won a prize!"` to test a query.
 
 ---
 
@@ -484,34 +540,84 @@ The `agents/` package contains the five specialized agents. Each agent file curr
 
 ### 7.5 `dispatcher.py` — Task Dispatcher
 
-**Status: 🔲 Stub (not yet implemented)**
+**Status: ✅ Fully implemented and tested**
 
-**Planned Purpose:** The central routing agent that receives user tasks from `main.py` and delegates them to the appropriate specialized agent(s).
+**Purpose:** The central routing agent that receives user tasks from `main.py` and delegates them to the appropriate specialized agent. It never calls the LLM itself — it is pure routing logic with intelligent auto-detection.
 
-**Planned Behaviour:**
-- `"analyse this email"` → routes to `email_agent`
-- `"check these logs"` → routes to `log_agent`
-- `"scan 192.168.1.0/24"` → routes to `ip_agent`
-- `"full analysis"` → runs all three agents, then passes results to the `correlator`
+**Public API:**
+
+```python
+def dispatch(task: dict) -> dict:
+    """
+    Route a task to the appropriate specialist agent.
+    task must contain "payload". Optionally contains "type" to skip detection.
+    """
+```
+
+**Input Schema:**
+
+```json
+{
+    "type":    "email" | "log" | "ip",
+    "payload": "<string | dict | list>"
+}
+```
+
+If `"type"` is omitted, the dispatcher **auto-detects** the payload type using the following priority:
+
+1. **Structured dict/list** with keys like `host`, `ip`, `port` → `"ip"`
+2. **Short string** that is a valid IP address or CIDR block → `"ip"`
+3. **String with RFC-2822 headers** (From:, Subject:, Received:) → `"email"`
+4. **String with log-line patterns** (timestamps, log levels, syslog format) → `"log"`
+5. **Fallback** → `"email"` (the LLM will handle ambiguous input)
+
+**How it works:**
+
+1. Validates that `task` contains a `"payload"` key
+2. If `"type"` is provided, uses it directly; otherwise runs `_detect_type()` auto-detection
+3. Lazily imports the correct agent module from the agent registry
+4. Calls the agent's `analyse(payload)` function
+5. Stamps `agent` and `task_type` fields onto the result dict
+6. Returns the agent's full result
+
+**Agent Registry:**
+
+| Type      | Module                          |
+|-----------|----------------------------------|
+| `email`   | `cyber_mas.agents.email_agent`   |
+| `log`     | `cyber_mas.agents.log_agent`     |
+| `ip`      | `cyber_mas.agents.ip_agent`      |
+
+**Internal Detection Functions:**
+
+| Function              | Purpose                                                    |
+|-----------------------|------------------------------------------------------------|
+| `_detect_type()`      | Infers payload type from structure, regex patterns, and content |
+| `_is_valid_ip_or_host()` | Validates IPs, CIDR blocks, and hostnames using `ipaddress` + regex |
+| `_route()`            | Lazily imports and calls the correct agent module            |
+
+**Self-test:** Run `python agents/dispatcher.py` — it tests auto-detection on 4 sample payloads (explicit email, auto-detect IP, auto-detect logs, auto-detect email) without calling any LLM.
 
 ---
 
 ## 8. Data Layer
 
-The `data/` directory contains subdirectories for input data used by the agents:
+The `data/` directory contains subdirectories for agent inputs:
 
 ```
 data/
-├── faiss_index/      # FAISS index binary files (auto-generated)
+├── faiss_index/      # FAISS index files (auto-generated, git-ignored content)
 │   └── .gitkeep      # Keeps empty directory in Git
-├── raw_emails/       # Sample email files (.eml or .txt) for email agent
+├── raw_emails/       # ✅ SpamAssassin public corpus downloaded
+│   ├── spam/         # ~500 spam email samples
+│   ├── easy_ham/     # ~2500 legitimate (ham) email samples
 │   └── .gitkeep
 └── sample_logs/      # Sample log files (syslog, auth.log) for log agent
     └── .gitkeep
 ```
 
-- **`faiss_index/`**: Will contain the serialized FAISS index after `faiss_store.py` builds it from known phishing samples. This directory is git-ignored (the index is regenerated).
-- **`raw_emails/`**: Place `.eml` or `.txt` email files here for the email agent to analyse. Will also hold known phishing samples for building the FAISS index.
+- **`faiss_index/`**: Contains the serialized FAISS index after `faiss_store.py` builds it from the email corpus. This directory is git-ignored (the index is regenerated by running `python tools/faiss_store.py --build`).
+- **`raw_emails/`**: Contains the **SpamAssassin public corpus** — ~500 spam emails in `spam/` and ~2500 legitimate emails in `easy_ham/`. Downloaded from [spamassassin.apache.org](https://spamassassin.apache.org/old/publiccorpus/). Also contains the original `.tar.bz2` archives.
 - **`sample_logs/`**: Place syslog, auth.log, or similar log files here for the log agent to parse.
 
 ---
@@ -578,35 +684,38 @@ print('All dependencies OK')
 | **LLM Client**         | `tools/llm_client.py`  | ✅ Done & Tested     | Groq API wrapper, singleton client, `ask()`  |
 | **Prompt Templates**   | `tools/prompts.py`     | ✅ Done & Tested     | 8 prompt functions (4 agents × 2 prompts)    |
 | **NVD Client**         | `tools/nvd_client.py`  | ✅ Done & Tested     | CVE lookup, CVSS parsing, rate-limit aware   |
-| **FAISS Store**        | `tools/faiss_store.py` | 🔲 Stub             | Vector similarity search                     |
+| **FAISS Store**        | `tools/faiss_store.py` | ✅ Done & Tested     | Vector index: build from corpus + query API  |
+| **Dispatcher**         | `agents/dispatcher.py` | ✅ Done & Tested     | Auto-detect payload type + route to agent    |
+| **Email Corpus**       | `data/raw_emails/`     | ✅ Downloaded        | SpamAssassin corpus (~3000 emails)           |
 | **Email Agent**        | `agents/email_agent.py`| 🔲 Stub             | Phishing detection pipeline                  |
 | **Log Agent**          | `agents/log_agent.py`  | 🔲 Stub             | Log intrusion detection pipeline             |
 | **IP Agent**           | `agents/ip_agent.py`   | 🔲 Stub             | Network vulnerability scanner pipeline       |
 | **Correlator**         | `agents/correlator.py` | 🔲 Stub             | Cross-domain attack pattern detection        |
-| **Dispatcher**         | `agents/dispatcher.py` | 🔲 Stub             | Task routing to specialized agents           |
 | **CLI Entry Point**    | `main.py`              | 🔲 Stub             | User-facing command-line interface           |
 | **Environment**        | `.env` / `.env.example`| ✅ Done              | API key configuration                        |
 | **Dependencies**       | `requirements.txt`     | ✅ Done              | All 12 packages listed and installable       |
 | **Git Config**         | `.gitignore`           | ✅ Done              | Secrets and generated files excluded         |
 
-### What's Done (Tools Layer)
+### What's Done
 
-The entire shared tools layer is built:
-- **LLM communication** is working end-to-end with Groq
+The entire shared **tools layer** and the **dispatcher** are built:
+- **LLM communication** is working end-to-end with Groq (LLaMA 3.3-70B)
 - **Prompt engineering** is complete for all 4 agents with chain-of-thought reasoning
 - **CVE vulnerability lookups** are working against the live NVD API
+- **FAISS vector store** is implemented — corpus loading, embedding, indexing, and querying
+- **SpamAssassin email corpus** has been downloaded (~500 spam + ~2500 ham samples)
+- **Dispatcher** auto-detects payload types (email/log/IP) and routes to the correct agent
 
-### What's Next (Agents Layer)
+### What's Next (Agent Implementations)
 
-The agent implementations (the actual business logic) are the next step:
-1. Implement `faiss_store.py` (FAISS vector index)
+The specialist agent logic (the core analysis pipelines) is the next step:
+1. Build the FAISS index: `python tools/faiss_store.py --build`
 2. Implement `email_agent.py` (phishing detection)
 3. Implement `log_agent.py` (log analysis)
 4. Implement `ip_agent.py` (network scanning)
 5. Implement `correlator.py` (cross-domain correlation)
-6. Implement `dispatcher.py` (task routing)
-7. Implement `main.py` (CLI interface)
+6. Implement `main.py` (CLI interface)
 
 ---
 
-*Last updated: April 16, 2026*
+*Last updated: April 16, 2026 — v2 (faiss_store + dispatcher + corpus)*
