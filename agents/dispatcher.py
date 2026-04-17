@@ -1,5 +1,5 @@
 """
-cyber_mas/agents/dispatcher.py
+agents/dispatcher.py
 ══════════════════════════════════════════════════════════════════════════════
 Task Dispatcher Agent — the entry-point for every analysis request.
 
@@ -32,7 +32,7 @@ OUTPUT SCHEMA (passed through from the specialist agent)
 
 USAGE
 ─────
-  from cyber_mas.agents.dispatcher import dispatch
+  from agents.dispatcher import dispatch
 
   result = dispatch({"type": "email", "payload": raw_email_text})
   result = dispatch({"payload": raw_email_text})          # auto-detect
@@ -151,9 +151,9 @@ def _detect_type(payload: Any) -> str:
 # Imported lazily inside _route() to avoid circular imports and slow startup.
 
 _AGENT_REGISTRY: dict[str, str] = {
-    "email": "cyber_mas.agents.email_agent",
-    "log":   "cyber_mas.agents.log_agent",
-    "ip":    "cyber_mas.agents.ip_agent",
+    "email": "agents.email_agent",
+    "log":   "agents.log_agent",
+    "ip":    "agents.ip_agent",
 }
 
 
@@ -227,7 +227,7 @@ def dispatch(task: dict) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CLI smoke-test  —  python cyber_mas/agents/dispatcher.py
+# CLI smoke-test  —  python -m agents.dispatcher
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":

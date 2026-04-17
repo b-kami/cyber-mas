@@ -1,5 +1,5 @@
 """
-cyber_mas/tools/faiss_store.py
+tools/faiss_store.py
 ══════════════════════════════════════════════════════════════════════════════
 FAISS vector index over the SpamAssassin email corpus.
 
@@ -27,13 +27,13 @@ INDEX FILES
 USAGE
 ─────
   # one-time build (Codespace / any Linux machine with enough RAM)
-  python cyber_mas/tools/faiss_store.py --build
+  python tools/faiss_store.py --build
 
   # optional smoke-test query after build
-  python cyber_mas/tools/faiss_store.py --query "Congratulations! You won a prize."
+  python tools/faiss_store.py --query "Congratulations! You won a prize."
 
   # from code
-  from cyber_mas.tools.faiss_store import query
+  from tools.faiss_store import query
   distance, label, excerpt = query(email_text, k=1)
 """
 
@@ -274,7 +274,7 @@ def _ensure_loaded() -> None:
     if not INDEX_PATH.exists() or not META_PATH.exists():
         raise FileNotFoundError(
             "FAISS index not found. Run first:\n"
-            "  python cyber_mas/tools/faiss_store.py --build"
+            "  python tools/faiss_store.py --build"
         )
 
     log.info("Loading FAISS index from %s …", INDEX_PATH)
@@ -364,13 +364,13 @@ def _cli() -> None:
 Examples
 ────────
   # Build index from corpus (run once)
-  python cyber_mas/tools/faiss_store.py --build
+  python tools/faiss_store.py --build
 
   # Force rebuild even if index exists
-  python cyber_mas/tools/faiss_store.py --build --force
+  python tools/faiss_store.py --build --force
 
   # Query the index
-  python cyber_mas/tools/faiss_store.py --query "You have won a lottery prize!"
+  python tools/faiss_store.py --query "You have won a lottery prize!"
 
   # Query with k=3 nearest neighbours
   python cyber_mas/tools/faiss_store.py --query "Invoice attached" --k 3
