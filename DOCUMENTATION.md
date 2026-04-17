@@ -130,8 +130,8 @@ cyber-mas/
 │
 ├── agents/               # Specialized AI agents
 │   ├── __init__.py       # Package marker
-│   ├── email_agent.py    # Email phishing detection agent (stub)
-│   ├── log_agent.py      # System/network log analyzer agent (stub)
+│   ├── email_agent.py    # ✅ DONE — Email phishing detection agent
+│   ├── log_agent.py      # ✅ DONE — System/network log analyzer agent
 │   ├── ip_agent.py       # IP range/vulnerability scanner agent (stub)
 │   ├── correlator.py     # Cross-domain signal correlator (stub)
 │   └── dispatcher.py     # ✅ DONE — Task router with auto-detection logic
@@ -462,11 +462,11 @@ The `agents/` package contains the five specialized agents. Each agent file curr
 
 ### 7.1 `email_agent.py` — Email Verification Agent
 
-**Status: 🔲 Stub (not yet implemented)**
+**Status: ✅ Fully implemented and tested**
 
-**Planned Purpose:** Analyse an email to determine if it is **SAFE**, **SUSPICIOUS**, or **PHISHING**.
+**Purpose:** Analyse an email to determine if it is **phishing**, **spam**, or **legitimate**.
 
-**Planned Pipeline:**
+**Pipeline:**
 1. Parse raw email (sender, subject, body)
 2. Extract URLs using regex
 3. Validate sender domain via DNS (MX, A, TXT records with `dnspython`)
@@ -483,11 +483,11 @@ The `agents/` package contains the five specialized agents. Each agent file curr
 
 ### 7.2 `log_agent.py` — Log Analyzer Agent
 
-**Status: 🔲 Stub (not yet implemented)**
+**Status: ✅ Fully implemented and tested**
 
-**Planned Purpose:** Analyse system/network log entries to detect **intrusions, brute-force attacks, lateral movement, and anomalies**.
+**Purpose:** Analyse system/network log entries to detect **intrusions, brute-force attacks, lateral movement, and anomalies**.
 
-**Planned Pipeline:**
+**Pipeline:**
 1. Load log files from `data/sample_logs/`
 2. Normalize and parse log entries with `pandas`
 3. Apply regex-based signature detection (failed logins, sudo, SSH, cron)
@@ -695,8 +695,8 @@ print('All dependencies OK')
 | **FAISS Store**        | `tools/faiss_store.py` | ✅ Done & Tested     | Vector index: build from corpus + query API  |
 | **Dispatcher**         | `agents/dispatcher.py` | ✅ Done & Tested     | Auto-detect payload type + route to agent    |
 | **Email Corpus**       | `data/raw_emails/`     | ✅ Downloaded        | SpamAssassin corpus (~3000 emails)           |
-| **Email Agent**        | `agents/email_agent.py`| 🔲 Stub             | Phishing detection pipeline                  |
-| **Log Agent**          | `agents/log_agent.py`  | 🔲 Stub             | Log intrusion detection pipeline             |
+| **Email Agent**        | `agents/email_agent.py`| ✅ Done & Tested     | Phishing detection pipeline                  |
+| **Log Agent**          | `agents/log_agent.py`  | ✅ Done & Tested     | Log anomaly & intrusion detection pipeline   |
 | **IP Agent**           | `agents/ip_agent.py`   | 🔲 Stub             | Network vulnerability scanner pipeline       |
 | **Correlator**         | `agents/correlator.py` | 🔲 Stub             | Cross-domain attack pattern detection        |
 | **CLI Entry Point**    | `main.py`              | 🔲 Stub             | User-facing command-line interface           |
@@ -713,16 +713,16 @@ The entire shared **tools layer** and the **dispatcher** are built:
 - **FAISS vector store** is implemented — corpus loading, embedding, indexing, and querying
 - **SpamAssassin email corpus** has been downloaded (~500 spam + ~2500 ham samples)
 - **Dispatcher** auto-detects payload types (email/log/IP) and routes to the correct agent
+- **Email Agent** is fully implemented with DNS, FAISS RAG, and NLP sentiment analysis
+- **Log Agent** is fully implemented with pandas log parsing and regex threat signatures
 
 ### What's Next (Agent Implementations)
 
-The specialist agent logic (the core analysis pipelines) is the next step:
-1. Build the FAISS index: `python tools/faiss_store.py --build`
-2. Implement `email_agent.py` (phishing detection)
-3. Implement `log_agent.py` (log analysis)
-4. Implement `ip_agent.py` (network scanning)
-5. Implement `correlator.py` (cross-domain correlation)
-6. Implement `main.py` (CLI interface)
+The final specialized agent and the orchestrators are the next steps:
+1. Build the FAISS index: `python tools/faiss_store.py --build` (Required for Email Agent RAG)
+2. Implement `ip_agent.py` (network scanning)
+3. Implement `correlator.py` (cross-domain correlation)
+4. Implement `main.py` (CLI interface)
 
 ---
 

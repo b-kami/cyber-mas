@@ -43,6 +43,7 @@ Respond ONLY in this exact JSON format:
 
 def email_user_prompt(
     sender: str,
+    reply_to: str,
     subject: str,
     body: str,
     urls: list[str],
@@ -57,6 +58,7 @@ def email_user_prompt(
     Parameters
     ----------
     sender        : raw From header value
+    reply_to      : raw Reply-To header value
     subject       : email subject line
     body          : plain text body (truncated to 1000 chars)
     urls          : list of URLs found in the email
@@ -71,7 +73,8 @@ def email_user_prompt(
     return f"""Analyse the following email and return your verdict in the required JSON format.
 
 ── SENDER ─────────────────────────────────────────────────────
-{sender}
+From: {sender}
+Reply-To: {reply_to}
 
 ── SUBJECT ────────────────────────────────────────────────────
 {subject}
@@ -132,37 +135,34 @@ Respond ONLY in this exact JSON format:
 
 
 def log_user_prompt(
-    log_lines: list[str],
-    suricata_alerts: list[str],
-    time_range: str,
-    host_summary: str,
+    log_sample: str,
+    total_lines: int,
+    unique_ips: int,
+    time_span_secs: float,
+    top_sources: list[str],
+    error_rate: float,
+    signatures_hit: list[str],
 ) -> str:
     """
-    User prompt for the log agent — injects normalized log data.
-
-    Parameters
-    ----------
-    log_lines       : list of normalized log entry strings (max 80 lines)
-    suricata_alerts : list of Suricata signature matches (can be empty)
-    time_range      : human-readable time window e.g. "2024-01-15 08:00 → 08:45"
-    host_summary    : brief summary of unique IPs/hosts seen
+    User prompt for the log agent — injects normalized log data and stats.
     """
-    logs_str     = "\n".join(log_lines[:80])
-    suricata_str = "\n".join(f"  [ALERT] {a}" for a in suricata_alerts) if suricata_alerts else "  No Suricata alerts triggered"
+    top_srcs_fmt = ", ".join(top_sources) if top_sources else "None"
+    sigs_fmt     = ", ".join(signatures_hit) if signatures_hit else "None detected"
 
     return f"""Analyse the following log sequence and return your verdict in the required JSON format.
 
-── TIME RANGE ──────────────────────────────────────────────────
-{time_range}
+── LOG STATISTICS ─────────────────────────────────────────────
+Total Lines: {total_lines}
+Unique IPs: {unique_ips}
+Time Span (secs): {time_span_secs}
+Error Rate: {error_rate * 100:.1f}%
+Top Sources: {top_srcs_fmt}
 
-── HOST SUMMARY ────────────────────────────────────────────────
-{host_summary}
+── SIGNATURES FIRED ───────────────────────────────────────────
+{sigs_fmt}
 
-── SURICATA SIGNATURE ALERTS ───────────────────────────────────
-{suricata_str}
-
-── LOG ENTRIES ─────────────────────────────────────────────────
-{logs_str}
+── REPRESENTATIVE LOG SAMPLE ──────────────────────────────────
+{log_sample}
 
 Now apply your chain-of-thought reasoning and return the JSON verdict."""
 

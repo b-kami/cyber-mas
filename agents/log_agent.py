@@ -1,5 +1,5 @@
 """
-cyber_mas/agents/log_agent.py
+agents/log_agent.py
 ══════════════════════════════════════════════════════════════════════════════
 Log Anomaly Detection Agent.
 
@@ -56,7 +56,7 @@ OUTPUT SCHEMA
 
 USAGE
 ─────
-  from cyber_mas.agents.log_agent import analyse
+  from agents.log_agent import analyse
 
   with open("auth.log") as f:
       result = analyse(f.read())
@@ -75,8 +75,15 @@ from typing import Any
 
 import pandas as pd
 
-from cyber_mas.tools.llm_client import ask
-from cyber_mas.tools.prompts import log_system_prompt, log_user_prompt
+import sys
+import os
+# Ensure project root is in sys.path so 'python agents/log_agent.py' works
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from tools.llm_client import ask
+from tools.prompts import log_system_prompt, log_user_prompt
 
 log = logging.getLogger(__name__)
 
@@ -478,7 +485,7 @@ def analyse(payload: str | list) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CLI smoke-test  —  python cyber_mas/agents/log_agent.py
+# CLI smoke-test  —  python agents/log_agent.py
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":

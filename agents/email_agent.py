@@ -65,7 +65,14 @@ import email
 import json
 import logging
 import re
+import sys
+import os
 from typing import Any
+
+# Ensure project root is in sys.path so 'python agents/email_agent.py' works
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 from tools.faiss_store import is_index_ready, query as faiss_query
 from tools.llm_client import ask
