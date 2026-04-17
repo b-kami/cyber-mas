@@ -1,5 +1,5 @@
 """
-cyber_mas/agents/ip_agent.py
+agents/ip_agent.py
 ══════════════════════════════════════════════════════════════════════════════
 IP / Network Scanning & Vulnerability Assessment Agent.
 
@@ -59,7 +59,7 @@ OUTPUT SCHEMA
 
 USAGE
 ─────
-  from cyber_mas.agents.ip_agent import analyse
+  from agents.ip_agent import analyse
 
   result = analyse("192.168.1.1")
   result = analyse({"host": "10.0.0.5", "ports": "22,80,443"})
@@ -76,9 +76,17 @@ from typing import Any
 
 import nmap
 
-from cyber_mas.tools.llm_client import ask
-from cyber_mas.tools.nvd_client import fetch_cves_for_hosts
-from cyber_mas.tools.prompts import ip_system_prompt, ip_user_prompt
+import sys
+import os
+
+# Ensure project root is in sys.path so 'python agents/ip_agent.py' works
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from tools.llm_client import ask
+from tools.nvd_client import fetch_cves_for_hosts
+from tools.prompts import ip_system_prompt, ip_user_prompt
 
 log = logging.getLogger(__name__)
 
@@ -542,7 +550,7 @@ def analyse(payload: str | dict) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CLI smoke-test  —  python cyber_mas/agents/ip_agent.py [target]
+# CLI smoke-test  —  python agents/ip_agent.py [target]
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":

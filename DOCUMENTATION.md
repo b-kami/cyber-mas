@@ -132,7 +132,7 @@ cyber-mas/
 │   ├── __init__.py       # Package marker
 │   ├── email_agent.py    # ✅ DONE — Email phishing detection agent
 │   ├── log_agent.py      # ✅ DONE — System/network log analyzer agent
-│   ├── ip_agent.py       # IP range/vulnerability scanner agent (stub)
+│   ├── ip_agent.py       # ✅ DONE — IP range/vulnerability scanner agent
 │   ├── correlator.py     # Cross-domain signal correlator (stub)
 │   └── dispatcher.py     # ✅ DONE — Task router with auto-detection logic
 │
@@ -503,19 +503,19 @@ The `agents/` package contains the five specialized agents. Each agent file curr
 
 ### 7.3 `ip_agent.py` — IP Range Analyzer Agent
 
-**Status: 🔲 Stub (not yet implemented)**
+**Status: ✅ Fully implemented and tested**
 
-**Planned Purpose:** Scan an IP range for open ports, identify running services, and cross-reference them with known CVEs from the NVD.
+**Purpose:** Scan an IP range for open ports, identify running services, and cross-reference them with known CVEs from the NVD.
 
-**Planned Pipeline:**
-1. Accept a CIDR range (e.g. `192.168.1.0/24`)
-2. Run an Nmap scan using `python-nmap` to find open ports and service versions
+**Pipeline:**
+1. Accept a CIDR range or IP address
+2. Run an Nmap scan using `python-nmap` to find open ports, service versions, and OS guess
 3. For each discovered service, query NVD via `nvd_client.fetch_cves_for_hosts()`
 4. Build the prompt using `ip_system_prompt()` + `ip_user_prompt()`
 5. Send to LLM via `llm_client.ask()`
-6. Parse and return the JSON verdict (includes CVE highlights and critical host)
+6. Parse and return the JSON verdict (includes CVE highlights, risky ports, and vulnerability status)
 
-**Tools it will use:** `llm_client`, `prompts`, `nvd_client`, `python-nmap`
+**Tools it uses:** `llm_client`, `prompts`, `nvd_client`, `python-nmap`
 
 ---
 
@@ -697,7 +697,7 @@ print('All dependencies OK')
 | **Email Corpus**       | `data/raw_emails/`     | ✅ Downloaded        | SpamAssassin corpus (~3000 emails)           |
 | **Email Agent**        | `agents/email_agent.py`| ✅ Done & Tested     | Phishing detection pipeline                  |
 | **Log Agent**          | `agents/log_agent.py`  | ✅ Done & Tested     | Log anomaly & intrusion detection pipeline   |
-| **IP Agent**           | `agents/ip_agent.py`   | 🔲 Stub             | Network vulnerability scanner pipeline       |
+| **IP Agent**           | `agents/ip_agent.py`   | ✅ Done & Tested     | Network vulnerability scanner pipeline       |
 | **Correlator**         | `agents/correlator.py` | 🔲 Stub             | Cross-domain attack pattern detection        |
 | **CLI Entry Point**    | `main.py`              | 🔲 Stub             | User-facing command-line interface           |
 | **Environment**        | `.env` / `.env.example`| ✅ Done              | API key configuration                        |
@@ -715,14 +715,14 @@ The entire shared **tools layer** and the **dispatcher** are built:
 - **Dispatcher** auto-detects payload types (email/log/IP) and routes to the correct agent
 - **Email Agent** is fully implemented with DNS, FAISS RAG, and NLP sentiment analysis
 - **Log Agent** is fully implemented with pandas log parsing and regex threat signatures
+- **IP Agent** is fully implemented with Nmap port/service scanning and NVD CVE enrichment
 
 ### What's Next (Agent Implementations)
 
-The final specialized agent and the orchestrators are the next steps:
+The final orchestrators are the next steps:
 1. Build the FAISS index: `python tools/faiss_store.py --build` (Required for Email Agent RAG)
-2. Implement `ip_agent.py` (network scanning)
-3. Implement `correlator.py` (cross-domain correlation)
-4. Implement `main.py` (CLI interface)
+2. Implement `correlator.py` (cross-domain correlation)
+3. Implement `main.py` (CLI interface)
 
 ---
 

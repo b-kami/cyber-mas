@@ -42,59 +42,31 @@ Respond ONLY in this exact JSON format:
 
 
 def email_user_prompt(
+    subject: str,
     sender: str,
     reply_to: str,
-    subject: str,
     body: str,
-    urls: list[str],
-    dns_results: dict,
-    sentiment: str,
-    faiss_score: float,
-    similar_sample: str,
+    link_count: int,
+    has_attachments: bool,
+    rag_context: str,
 ) -> str:
     """
     User prompt for the email agent — injects all extracted signals.
-
-    Parameters
-    ----------
-    sender        : raw From header value
-    reply_to      : raw Reply-To header value
-    subject       : email subject line
-    body          : plain text body (truncated to 1000 chars)
-    urls          : list of URLs found in the email
-    dns_results   : dict of domain → DNS lookup result
-    sentiment     : TextBlob polarity label (positive/negative/neutral)
-    faiss_score   : similarity distance to nearest known phishing sample (lower = more similar)
-    similar_sample: excerpt from the closest FAISS match
     """
-    urls_str = "\n".join(f"  - {u}" for u in urls) if urls else "  None found"
-    dns_str  = "\n".join(f"  {k}: {v}" for k, v in dns_results.items()) if dns_results else "  No DNS data"
-
     return f"""Analyse the following email and return your verdict in the required JSON format.
 
-── SENDER ─────────────────────────────────────────────────────
+── HEADERS & METADATA ─────────────────────────────────────────
 From: {sender}
 Reply-To: {reply_to}
+Subject: {subject}
+Has Attachments: {"Yes" if has_attachments else "No"}
+Number of Links: {link_count}
 
-── SUBJECT ────────────────────────────────────────────────────
-{subject}
+── BODY (first 2000 chars) ────────────────────────────────────
+{body[:2000]}
 
-── BODY (first 1000 chars) ────────────────────────────────────
-{body[:1000]}
-
-── URLs FOUND ─────────────────────────────────────────────────
-{urls_str}
-
-── DNS VALIDATION ─────────────────────────────────────────────
-{dns_str}
-
-── SENTIMENT ANALYSIS ─────────────────────────────────────────
-Detected sentiment: {sentiment}
-
-── VECTOR SIMILARITY (FAISS) ──────────────────────────────────
-Distance to nearest known phishing sample: {faiss_score:.4f}
-(0.0 = identical match, >1.0 = very different)
-Closest known sample excerpt: "{similar_sample[:200]}"
+── VECTOR SIMILARITY (FAISS RAG) ──────────────────────────────
+{rag_context}
 
 Now apply your chain-of-thought reasoning and return the JSON verdict."""
 
@@ -201,47 +173,31 @@ Respond ONLY in this exact JSON format:
 
 
 def ip_user_prompt(
-    ip_range: str,
-    scan_results: list[dict],
-    cve_data: list[dict],
+    target: str,
+    scan_summary: str,
+    open_ports: list[dict],
+    cve_count: int,
+    top_cves: list[dict],
+    os_guess: str,
+    risky_ports: list[int],
 ) -> str:
     """
     User prompt for the IP agent — injects Nmap + NVD results.
-
-    Parameters
-    ----------
-    ip_range     : the CIDR range scanned e.g. "192.168.1.0/24"
-    scan_results : list of dicts — one per host with keys:
-                   ip, hostname, open_ports, services
-    cve_data     : list of dicts — one per CVE with keys:
-                   cve_id, cvss_score, description, affected_service
     """
-    hosts_str = ""
-    for host in scan_results:
-        hosts_str += f"\n  Host: {host.get('ip')} ({host.get('hostname', 'unknown')})\n"
-        for port_info in host.get("open_ports", []):
-            hosts_str += f"    Port {port_info}\n"
-
-    cves_str = ""
-    for cve in cve_data[:20]:  # cap at 20 CVEs
-        cves_str += (
-            f"\n  {cve.get('cve_id')} | CVSS: {cve.get('cvss_score')} | "
-            f"{cve.get('affected_service')} | {cve.get('description', '')[:120]}"
-        )
-
-    if not cves_str:
-        cves_str = "\n  No CVEs found for detected service versions"
+    
+    risky_str = f"Yes ({risky_ports})" if risky_ports else "None"
 
     return f"""Analyse the following network scan results and return your verdict in the required JSON format.
 
-── IP RANGE SCANNED ────────────────────────────────────────────
-{ip_range}
+── SCAN TARGET ────────────────────────────────────────────────
+Target: {target}
+OS Guess: {os_guess}
+Total Open Ports: {len(open_ports)}
+High-Risk Ports Detected: {risky_str}
+Total CVEs Found: {cve_count}
 
-── HOSTS AND OPEN PORTS ────────────────────────────────────────
-{hosts_str if hosts_str else "  No active hosts found"}
-
-── CVEs MATCHED FROM NVD ───────────────────────────────────────
-{cves_str}
+── DETAILED SCAN SUMMARY ──────────────────────────────────────
+{scan_summary}
 
 Now apply your chain-of-thought reasoning and return the JSON verdict."""
 
