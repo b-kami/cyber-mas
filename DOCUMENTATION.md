@@ -23,6 +23,8 @@
    - 7.3 [ip_agent.py](#73-ip_agentpy--ip-range-analyzer-agent)
    - 7.4 [correlator.py](#74-correlatorpy--cross-domain-correlator)
    - 7.5 [dispatcher.py](#75-dispatcherpy--task-dispatcher)
+   - 7.6 [main.py](#76-mainpy--cli-entry-point)
+   - 7.7 [dashboard/api.py](#77-dashboardapipy--web-ui-backend)
 8. [Data Layer](#8-data-layer)
 9. [How to Run & Test](#9-how-to-run--test)
 10. [Current Progress Summary](#10-current-progress-summary)
@@ -62,6 +64,8 @@ Each agent follows a **Retrieval-Augmented Generation (RAG)** pattern:
 | Config         | **python-dotenv**                                    |
 | Validation     | **pydantic**                                         |
 | CLI Output     | **rich** (tables, panels, colored terminal output)   |
+| Web UI Backend | **FastAPI**, **uvicorn**                             |
+| Frontend       | **HTML/CSS/JS** with Server-Sent Events (SSE)        |
 
 ---
 
@@ -70,7 +74,7 @@ Each agent follows a **Retrieval-Augmented Generation (RAG)** pattern:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         USER / CLI                              │
-│                        (main.py)                                │
+│            (main.py / Web Dashboard via FastAPI)                │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          ▼
@@ -127,6 +131,11 @@ cyber-mas/
 ├── DOCUMENTATION.md      # This file — detailed technical documentation
 ├── requirements.txt      # Python dependencies
 ├── main.py               # ✅ DONE — Rich CLI entry point (all agents + correlator)
+│
+├── dashboard/            # Web UI Backend & Frontend
+│   ├── api.py            # ✅ DONE — FastAPI server providing SSE stream
+│   └── static/
+│       └── index.html    # ✅ DONE — SOC Dashboard UI (HTML/CSS/JS)
 │
 ├── agents/               # Specialized AI agents
 │   ├── __init__.py       # Package marker
@@ -219,6 +228,9 @@ pip install -r requirements.txt
 | `pydantic`             | latest  | Data validation and structured output parsing (agent responses)        |
 | `rich`                 | latest  | Beautiful terminal output — tables, panels, colors for self-tests      |
 | `python-nmap`          | latest  | Python wrapper around the Nmap network scanner                         |
+| `fastapi`              | latest  | Web framework for the dashboard API                                    |
+| `uvicorn[standard]`    | latest  | ASGI server to run the FastAPI application                             |
+| `python-multipart`     | latest  | Support for form data parsing in FastAPI                               |
 
 ---
 
@@ -592,6 +604,32 @@ python main.py --build-index
 
 ---
 
+### 7.7 `dashboard/api.py` — Web UI Backend
+
+**Status: ✅ Fully implemented and tested**
+
+**Purpose:** A FastAPI backend that serves a real-time, industrial "SOC (Security Operations Center)" dashboard. It streams agent execution progress back to the browser using Server-Sent Events (SSE).
+
+**Key Features:**
+- Runs the `dispatcher` asynchronously in a thread pool so the event loop remains unblocked.
+- Streams real-time `start`, `result`, and `complete` events to the frontend via `/api/analyse`.
+- Automatically maps detected threats (from signatures, verdicts, and indicators) to **MITRE ATT&CK** tactics and techniques (e.g., T1110 Brute Force, T1566 Phishing).
+- Maintains an in-memory history of the last 50 analysis reports.
+- Serves the frontend from `/static/index.html`.
+
+**Frontend (`dashboard/static/index.html`):**
+- A pure HTML/CSS/JS single-page application.
+- Uses `EventSource` to receive the SSE stream from the FastAPI backend.
+- Features a dark "industrial SOC" aesthetic with scanlines, dynamic progress bars, a live log monitor, and detailed MITRE ATT&CK mappings.
+
+**How to run:**
+```bash
+uvicorn dashboard.api:app --reload --port 8000
+```
+Then visit `http://localhost:8000` in your browser.
+
+---
+
 ### 7.5 `dispatcher.py` — Task Dispatcher
 
 **Status: ✅ Fully implemented and tested**
@@ -754,6 +792,8 @@ print('All dependencies OK')
 | **IP Agent**           | `agents/ip_agent.py`   | ✅ Done & Tested     | Network vulnerability scanner pipeline       |
 | **Correlator**         | `agents/correlator.py` | ✅ Done & Tested     | Cross-domain attack pattern detection + unified risk |
 | **CLI Entry Point**    | `main.py`              | ✅ Done & Tested     | Rich CLI: all agents, correlator, JSON output |
+| **Web Dashboard API**  | `dashboard/api.py`     | ✅ Done & Tested     | FastAPI backend with SSE streaming and MITRE ATT&CK |
+| **Web Dashboard UI**   | `static/index.html`    | ✅ Done & Tested     | Real-time visual SOC interface |
 | **Environment**        | `.env` / `.env.example`| ✅ Done              | API key configuration                        |
 | **Dependencies**       | `requirements.txt`     | ✅ Done              | All 12 packages listed and installable       |
 | **Git Config**         | `.gitignore`           | ✅ Done              | Secrets and generated files excluded         |
@@ -772,12 +812,14 @@ The **entire system is now fully implemented** end-to-end:
 - **IP Agent** is fully implemented with Nmap port/service scanning and NVD CVE enrichment
 - **Correlator** is fully implemented with 6 correlation rules and weighted risk scoring
 - **main.py CLI** is fully implemented with Rich output, JSON export, and all agent orchestration
+- **Web Dashboard** is fully implemented with FastAPI, SSE real-time streaming, MITRE mapping, and a visual UI
 
 ### Remaining Steps
 
 1. **Build the FAISS index** (one-time setup): `python main.py --build-index`
-2. **Run the full pipeline**: `python main.py --email email.eml --log auth.log --ip 192.168.1.1`
+2. **Run the full pipeline (CLI)**: `python main.py --email email.eml --log auth.log --ip 192.168.1.1`
+3. **Run the Web Dashboard**: `uvicorn dashboard.api:app --reload --port 8000`
 
 ---
 
-*Last updated: April 22, 2026 — v3 (all agents + correlator + CLI complete)*
+*Last updated: April 22, 2026 — v4 (Dashboard UI added)*

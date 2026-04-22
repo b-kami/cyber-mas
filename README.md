@@ -10,6 +10,11 @@ A modular, multi-agent system for automated cybersecurity threat detection and a
 
 ```
 ┌─────────────────────────────────────────────────────┐
+│                 dashboard/api.py                    │
+│            (FastAPI Web UI + SSE Stream)            │
+└────────────────────────┬────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────┐
 │                     main.py (CLI)                    │
 │                         │                            │
 │                   ┌─────▼─────┐                      │
@@ -57,6 +62,11 @@ cyber-mas/
 ├── .env.example             # API key template
 ├── .gitignore
 ├── README.md
+│
+├── dashboard/
+│   ├── api.py               # FastAPI backend
+│   └── static/
+│       └── index.html       # Web UI dashboard
 │
 ├── agents/
 │   ├── __init__.py
@@ -166,6 +176,16 @@ python main.py --email email.eml --log auth.log --output report.json
 python main.py --check
 ```
 
+### 9. Run the Web Dashboard
+
+Start the real-time SOC dashboard UI:
+
+```bash
+uvicorn dashboard.api:app --reload --port 8000
+```
+
+Then open your browser to: [http://localhost:8000](http://localhost:8000)
+
 ---
 
 ## 🔑 API Keys
@@ -191,6 +211,8 @@ python main.py --check
 | IP Agent (`agents/ip_agent.py`) | ✅ Done |
 | Correlator (`agents/correlator.py`) | ✅ Done |
 | CLI Entry Point (`main.py`) | ✅ Done |
+| Web UI API (`dashboard/api.py`) | ✅ Done |
+| Web UI Frontend (`dashboard/static/index.html`) | ✅ Done |
 
 ---
 
@@ -207,6 +229,7 @@ python main.py --check
 - **Validation:** Pydantic
 - **Network Scanning:** python-nmap
 - **CVE Database:** NVD REST API
+- **Web Dashboard:** FastAPI, Uvicorn, Vanilla JS/HTML/CSS, SSE (Server-Sent Events)
 
 ---
 
