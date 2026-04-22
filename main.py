@@ -39,13 +39,18 @@ import sys
 import time
 from pathlib import Path
 
-# ── Logging setup (before any cyber_mas imports) ──────────────────────────────
+# ── Ensure project root is always in sys.path (fixes ModuleNotFoundError) ────
+_PROJECT_ROOT = Path(__file__).resolve().parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+# ── Logging setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     datefmt="%H:%M:%S",
     level=logging.INFO,
 )
-log = logging.getLogger("cyber_mas.main")
+log = logging.getLogger("main")
 
 # ── Rich (optional — graceful fallback to plain print) ────────────────────────
 try:
@@ -228,29 +233,29 @@ def _check_environment() -> bool:
     if os.getenv("GROQ_API_KEY"):
         checks.append(("GROQ_API_KEY",  "✓", "set"))
     else:
-        checks.append(("GROQ_API_KEY",  "✗", "MISSING — export GROQ_API_KEY=..."))
+        checks.append(("GROQ_API_KEY",  "✗", "MISSING - export GROQ_API_KEY=..."))
         ok = False
 
     # NVD_API_KEY (optional but recommended)
     if os.getenv("NVD_API_KEY"):
         checks.append(("NVD_API_KEY",   "✓", "set"))
     else:
-        checks.append(("NVD_API_KEY",   "~", "not set — NVD rate limit applies (public)"))
+        checks.append(("NVD_API_KEY",   "~", "not set - NVD rate limit applies (public)"))
 
     # nmap binary
     import shutil
     if shutil.which("nmap"):
         checks.append(("nmap binary",   "✓", "found"))
     else:
-        checks.append(("nmap binary",   "~", "not found — ip_agent will be unavailable"))
+        checks.append(("nmap binary",   "~", "not found - ip_agent will be unavailable"))
 
     # FAISS index
-    from cyber_mas.tools.faiss_store import is_index_ready
+    from tools.faiss_store import is_index_ready
     if is_index_ready():
         checks.append(("FAISS index",   "✓", "ready"))
     else:
         checks.append(("FAISS index",   "~",
-                        "not built — run: python main.py --build-index"))
+                        "not built - run: python main.py --build-index"))
 
     # Python packages
     for pkg in ("groq", "faiss", "sentence_transformers", "nmap", "pandas"):
@@ -263,7 +268,7 @@ def _check_environment() -> bool:
             ok = False
 
     print("\n  Environment check:")
-    print("  " + "─" * 50)
+    print("  " + "-" * 50)
     for name, status, detail in checks:
         sym = {"✓": "OK", "✗": "FAIL", "~": "WARN"}.get(status, "?")
         print(f"  [{sym:4}] {name:<22} {detail}")
@@ -352,8 +357,8 @@ def run(args: argparse.Namespace) -> dict:
     -------
     dict — the complete report (all agent results + correlator if applicable)
     """
-    from cyber_mas.agents.dispatcher import dispatch
-    from cyber_mas.agents.correlator import correlate
+    from agents.dispatcher import dispatch
+    from agents.correlator import correlate
 
     report: dict = {
         "meta":    {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")},
@@ -468,7 +473,7 @@ def main() -> None:
         sys.exit(0 if ok else 1)
 
     if args.build_index:
-        from cyber_mas.tools.faiss_store import build_index
+        from tools.faiss_store import build_index
         build_index(force=args.force_rebuild)
         sys.exit(0)
 
