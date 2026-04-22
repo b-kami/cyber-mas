@@ -147,7 +147,7 @@ async def _run_agent_async(task: dict) -> dict:
     loop = asyncio.get_event_loop()
 
     def _sync():
-        from cyber_mas.agents.dispatcher import dispatch
+        from agents.dispatcher import dispatch
         return dispatch(task)
 
     return await loop.run_in_executor(None, _sync)
@@ -157,7 +157,7 @@ async def _run_correlator_async(agent_results: list[dict]) -> dict:
     loop = asyncio.get_event_loop()
 
     def _sync():
-        from cyber_mas.agents.correlator import correlate
+        from agents.correlator import correlate
         return correlate(agent_results)
 
     return await loop.run_in_executor(None, _sync)
@@ -180,7 +180,7 @@ async def root():
 async def status():
     """Environment health check."""
     import shutil
-    from cyber_mas.tools.faiss_store import is_index_ready
+    from tools.faiss_store import is_index_ready
 
     checks = {
         "groq_api_key":  bool(os.getenv("GROQ_API_KEY")),

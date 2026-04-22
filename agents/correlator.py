@@ -521,9 +521,9 @@ if __name__ == "__main__":
         "scan_duration": 18.4,
     }
 
-    print("\n" + "═" * 60)
-    print("  Correlator — smoke-test (3 mock agent results)")
-    print("═" * 60 + "\n")
+    print("\n" + "=" * 60)
+    print("  Correlator -- smoke-test (3 mock agent results)")
+    print("=" * 60 + "\n")
 
     try:
         result = correlate([MOCK_EMAIL, MOCK_LOG, MOCK_IP])

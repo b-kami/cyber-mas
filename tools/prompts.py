@@ -212,68 +212,48 @@ def correlator_system_prompt() -> str:
     """
     return """You are a senior threat intelligence analyst responsible for correlating signals from multiple security domains.
 
-You will receive structured reports from three specialized agents:
-- Email verification agent (phishing / spoofing detection)
-- Log analyzer agent (intrusion / anomaly detection)
-- IP range analyzer agent (network exposure / CVE assessment)
-
-Your task is to identify cross-domain attack patterns — indicators that appear across multiple reports suggesting a coordinated or multi-vector attack.
-
-Think step by step:
-1. Extract all IP addresses, domains, and timestamps from each report.
-2. Find entities that appear in more than one report (e.g. same IP in email and logs).
-3. Check for temporal correlation — did the email arrive shortly before the log anomaly?
-4. Identify the likely attack scenario (e.g. phishing → credential theft → lateral movement).
-5. Assign an overall threat level considering all three domains together.
-6. Produce a unified incident narrative and prioritised response.
+Your task is to review the unified threat context (pre-calculated correlations, risks, and individual agent reasoning) and provide a final holistic assessment.
 
 Respond ONLY in this exact JSON format:
 {
-  "threat_level": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
-  "overall_risk_score": 0 to 100,
-  "correlated_entities": ["shared IPs, domains, or patterns found across reports"],
-  "attack_scenario": "Likely attack chain description",
-  "incident_narrative": "Human-readable summary for the analyst",
-  "evidence": {
-    "email": "key finding from email agent",
-    "logs":  "key finding from log agent",
-    "ip":    "key finding from IP agent"
-  },
-  "response_actions": ["prioritised list of recommended actions"]
+  "verdict": "critical" | "high" | "medium" | "low" | "uncertain",
+  "confidence": 0.0 to 1.0,
+  "reasoning": "A concise, human-readable narrative explaining the overall threat based on the correlations and evidence provided.",
+  "recommendations": ["prioritised list of actionable response steps"]
 }"""
 
 
 def correlator_user_prompt(
-    email_report: dict,
-    log_report:   dict,
-    ip_report:    dict,
+    agent_summary: dict,
+    correlations: list[str],
+    unified_risk: float,
+    unified_indicators: list[str],
+    all_indicators: list[str],
+    email_reasoning: str,
+    log_reasoning: str,
+    ip_reasoning: str,
 ) -> str:
     """
-    User prompt for the correlator — injects all three agent reports.
-
-    Parameters
-    ----------
-    email_report : dict output from email_agent
-    log_report   : dict output from log_agent
-    ip_report    : dict output from ip_agent
+    User prompt for the correlator — injects pre-calculated context.
     """
     import json
+    return f"""Provide your final holistic assessment based on the following pre-calculated context.
 
-    def fmt(report: dict) -> str:
-        return json.dumps(report, indent=2)
+── AGENT SUMMARY ────────────────────────────────────────────────
+{json.dumps(agent_summary, indent=2)}
 
-    return f"""Correlate the three agent reports below and return your unified threat assessment.
+── CROSS-DOMAIN CORRELATIONS ────────────────────────────────────
+Rules Fired: {correlations if correlations else "None"}
+Unified Risk Score: {unified_risk}
+Unified Indicators: {unified_indicators}
+All Indicators: {all_indicators}
 
-── EMAIL VERIFICATION REPORT ───────────────────────────────────
-{fmt(email_report)}
+── INDIVIDUAL REASONING ────────────────────────────────────────
+Email Agent: {email_reasoning or "No data"}
+Log Agent:   {log_reasoning or "No data"}
+IP Agent:    {ip_reasoning or "No data"}
 
-── LOG ANALYZER REPORT ─────────────────────────────────────────
-{fmt(log_report)}
-
-── IP RANGE ANALYZER REPORT ────────────────────────────────────
-{fmt(ip_report)}
-
-Now identify cross-domain patterns and return the JSON verdict."""
+Now apply your chain-of-thought reasoning and return the JSON verdict."""
 
 
 # ══════════════════════════════════════════════════════════════
@@ -294,13 +274,13 @@ if __name__ == "__main__":
 
     checks = [
         ("email_system_prompt()",    "system",  email_system_prompt()),
-        ("email_user_prompt()",      "user",    email_user_prompt("test@evil.com", "Urgent!", "Click here", ["http://evil.com"], {}, "negative", 0.12, "Verify your account")),
+        ("email_user_prompt()",      "user",    email_user_prompt("Urgent!", "test@evil.com", "reply@evil.com", "Click here", 1, False, "RAG context excerpt")),
         ("log_system_prompt()",      "system",  log_system_prompt()),
         ("log_user_prompt()",        "user",    log_user_prompt(["Jan 1 08:00 sshd: Failed password for root"], [], "08:00→08:05", "1 host")),
         ("ip_system_prompt()",       "system",  ip_system_prompt()),
         ("ip_user_prompt()",         "user",    ip_user_prompt("192.168.1.0/24", [], [])),
         ("correlator_system_prompt()","system", correlator_system_prompt()),
-        ("correlator_user_prompt()", "user",    correlator_user_prompt({"verdict":"PHISHING"}, {"verdict":"MALICIOUS"}, {"verdict":"HIGH_RISK"})),
+        ("correlator_user_prompt()", "user",    correlator_user_prompt({"email": {"verdict": "phishing", "risk_score": 0.9}}, ["C2_phishing"], 0.95, [], [], "phishing", "", "")),
     ]
 
     for name, ptype, result in checks:
