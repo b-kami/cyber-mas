@@ -1,0 +1,2137 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cyber-MAS — SOC Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500&display=swap"
+        rel="stylesheet" />
+    <style>
+        /* ═══════════════════════════════════════════════════════════
+   DESIGN DIRECTION: Industrial terminal SOC — dark green/amber
+   phosphor glow, monospace precision, military-grade density
+   ═══════════════════════════════════════════════════════════ */
+        :root {
+            --bg0: #080c0a;
+            --bg1: #0d1210;
+            --bg2: #111916;
+            --bg3: #172018;
+            --border: #1e2e22;
+            --border2: #2a3d2e;
+            --green: #00ff88;
+            --green-dim: #00c060;
+            --green-dark: #004422;
+            --amber: #ffaa00;
+            --amber-dim: #cc8800;
+            --red: #ff3355;
+            --red-dim: #cc2244;
+            --cyan: #00ddcc;
+            --purple: #aa77ff;
+            --text: #b8d4bc;
+            --text-dim: #5a7a5e;
+            --text-bright: #e8f5ea;
+            --mono: 'Share Tech Mono', monospace;
+            --display: 'Rajdhani', sans-serif;
+            --body: 'Inter', sans-serif;
+            --glow-g: 0 0 8px rgba(0, 255, 136, 0.4);
+            --glow-a: 0 0 8px rgba(255, 170, 0, 0.4);
+            --glow-r: 0 0 8px rgba(255, 51, 85, 0.4);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scrollbar-width: thin;
+            scrollbar-color: var(--border2) var(--bg0);
+        }
+
+        body {
+            background: var(--bg0);
+            color: var(--text);
+            font-family: var(--body);
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        /* scanline overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 9999;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px,
+                    rgba(0, 0, 0, 0.03) 2px, rgba(0, 0, 0, 0.03) 4px);
+        }
+
+        /* ── Layout ─────────────────────────────────────────────── */
+        .shell {
+            display: grid;
+            grid-template-rows: 52px 1fr;
+            grid-template-columns: 220px 1fr;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ── Topbar ─────────────────────────────────────────────── */
+        .topbar {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 0 20px;
+            background: var(--bg1);
+            border-bottom: 1px solid var(--border);
+            position: relative;
+        }
+
+        .logo {
+            font-family: var(--display);
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            color: var(--green);
+            text-shadow: var(--glow-g);
+            white-space: nowrap;
+        }
+
+        .logo span {
+            color: var(--text-dim);
+            font-weight: 400;
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+
+        .topbar-status {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-left: auto;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: var(--glow-g);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.warn {
+            background: var(--amber);
+            box-shadow: var(--glow-a);
+        }
+
+        .status-dot.error {
+            background: var(--red);
+            box-shadow: var(--glow-r);
+            animation: none;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        .clock {
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--green-dim);
+            letter-spacing: 1px;
+        }
+
+        /* ── Sidebar ─────────────────────────────────────────────── */
+        .sidebar {
+            background: var(--bg1);
+            border-right: 1px solid var(--border);
+            padding: 16px 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .nav-section {
+            padding: 8px 16px 4px;
+            font-family: var(--mono);
+            font-size: 9px;
+            letter-spacing: 2px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: var(--display);
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            border-left: 2px solid transparent;
+            transition: all 0.15s;
+        }
+
+        .nav-item:hover {
+            color: var(--text);
+            background: var(--bg2);
+        }
+
+        .nav-item.active {
+            color: var(--green);
+            border-left-color: var(--green);
+            background: var(--green-dark);
+            text-shadow: var(--glow-g);
+        }
+
+        .nav-icon {
+            font-size: 14px;
+            width: 16px;
+            text-align: center;
+        }
+
+        .nav-badge {
+            margin-left: auto;
+            font-family: var(--mono);
+            font-size: 9px;
+            padding: 1px 5px;
+            border-radius: 2px;
+            background: var(--red-dim);
+            color: #fff;
+        }
+
+        /* ── Main content ────────────────────────────────────────── */
+        .main {
+            overflow-y: auto;
+            background: var(--bg0);
+        }
+
+        .view {
+            display: none;
+            padding: 20px;
+        }
+
+        .view.active {
+            display: block;
+        }
+
+        /* ── Panel / Card ────────────────────────────────────────── */
+        .panel {
+            background: var(--bg1);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg2);
+            font-family: var(--display);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: var(--text);
+            text-transform: uppercase;
+        }
+
+        .panel-header .ph-accent {
+            width: 3px;
+            height: 14px;
+            border-radius: 1px;
+        }
+
+        .panel-body {
+            padding: 16px;
+        }
+
+        /* ── Grid helpers ─────────────────────────────────────────── */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+        }
+
+        /* ── Analyse form ─────────────────────────────────────────── */
+        .analyse-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+        }
+
+        .field-label {
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: 1px;
+            color: var(--green-dim);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .field-label::before {
+            content: '▸';
+            color: var(--green);
+        }
+
+        textarea,
+        input[type=text] {
+            width: 100%;
+            background: var(--bg0);
+            border: 1px solid var(--border2);
+            border-radius: 2px;
+            color: var(--text-bright);
+            font-family: var(--mono);
+            font-size: 11px;
+            padding: 8px 10px;
+            outline: none;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus,
+        input:focus {
+            border-color: var(--green-dim);
+            box-shadow: 0 0 0 1px rgba(0, 192, 96, 0.2);
+        }
+
+        textarea {
+            min-height: 120px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 24px;
+            border: 1px solid var(--green);
+            background: transparent;
+            color: var(--green);
+            font-family: var(--display);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            cursor: pointer;
+            border-radius: 2px;
+            transition: all 0.15s;
+            text-transform: uppercase;
+        }
+
+        .btn:hover {
+            background: var(--green);
+            color: var(--bg0);
+            box-shadow: var(--glow-g);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn:disabled:hover {
+            background: transparent;
+            color: var(--green);
+            box-shadow: none;
+        }
+
+        .btn-danger {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        .btn-danger:hover {
+            background: var(--red);
+            color: #fff;
+            box-shadow: var(--glow-r);
+        }
+
+        /* ── Progress / pipeline ─────────────────────────────────── */
+        .pipeline {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin: 16px 0;
+            padding: 16px;
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            overflow-x: auto;
+        }
+
+        .pipe-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            min-width: 90px;
+            position: relative;
+        }
+
+        .pipe-step+.pipe-step::before {
+            content: '';
+            position: absolute;
+            left: -24px;
+            top: 18px;
+            width: 48px;
+            height: 1px;
+            background: var(--border2);
+            transition: background 0.3s;
+        }
+
+        .pipe-step.done+.pipe-step::before,
+        .pipe-step.running+.pipe-step::before {
+            background: var(--green-dim);
+        }
+
+        .pipe-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 2px solid var(--border2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            background: var(--bg1);
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .pipe-step.running .pipe-icon {
+            border-color: var(--amber);
+            box-shadow: 0 0 12px rgba(255, 170, 0, 0.5);
+            animation: spin-border 1s linear infinite;
+        }
+
+        .pipe-step.done .pipe-icon {
+            border-color: var(--green);
+            box-shadow: var(--glow-g);
+            background: var(--green-dark);
+        }
+
+        .pipe-step.error .pipe-icon {
+            border-color: var(--red);
+            box-shadow: var(--glow-r);
+        }
+
+        @keyframes spin-border {
+            0% {
+                box-shadow: 0 0 0 2px rgba(255, 170, 0, 0.8), 0 0 12px rgba(255, 170, 0, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 0 0 2px rgba(255, 170, 0, 0.3), 0 0 20px rgba(255, 170, 0, 0.6);
+            }
+
+            100% {
+                box-shadow: 0 0 0 2px rgba(255, 170, 0, 0.8), 0 0 12px rgba(255, 170, 0, 0.3);
+            }
+        }
+
+        .pipe-label {
+            font-family: var(--mono);
+            font-size: 9px;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        .pipe-step.done .pipe-label {
+            color: var(--green-dim);
+        }
+
+        .pipe-step.running .pipe-label {
+            color: var(--amber);
+        }
+
+        .pipe-status {
+            font-family: var(--mono);
+            font-size: 8px;
+            color: var(--text-dim);
+            height: 12px;
+        }
+
+        .pipe-step.done .pipe-status {
+            color: var(--green-dim);
+        }
+
+        .pipe-step.running .pipe-status {
+            color: var(--amber);
+            animation: blink 0.8s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: 0
+            }
+        }
+
+        /* ── Verdict badge ────────────────────────────────────────── */
+        .verdict {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 2px;
+            font-family: var(--display);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .verdict.critical {
+            background: rgba(255, 51, 85, 0.2);
+            color: var(--red);
+            border: 1px solid var(--red-dim);
+            box-shadow: var(--glow-r);
+        }
+
+        .verdict.high {
+            background: rgba(255, 51, 85, 0.1);
+            color: #ff7799;
+            border: 1px solid rgba(255, 51, 85, 0.3);
+        }
+
+        .verdict.medium {
+            background: rgba(255, 170, 0, 0.15);
+            color: var(--amber);
+            border: 1px solid var(--amber-dim);
+            box-shadow: var(--glow-a);
+        }
+
+        .verdict.low {
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--green);
+            border: 1px solid var(--green-dim);
+        }
+
+        .verdict.phishing {
+            background: rgba(255, 51, 85, 0.2);
+            color: var(--red);
+            border: 1px solid var(--red-dim);
+        }
+
+        .verdict.malicious {
+            background: rgba(255, 51, 85, 0.2);
+            color: var(--red);
+            border: 1px solid var(--red-dim);
+        }
+
+        .verdict.vulnerable {
+            background: rgba(255, 170, 0, 0.15);
+            color: var(--amber);
+            border: 1px solid var(--amber-dim);
+        }
+
+        .verdict.suspicious {
+            background: rgba(255, 170, 0, 0.1);
+            color: #ffcc55;
+            border: 1px solid rgba(255, 170, 0, 0.3);
+        }
+
+        .verdict.legitimate,
+        .verdict.benign,
+        .verdict.clean {
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--green);
+            border: 1px solid var(--green-dim);
+        }
+
+        .verdict.uncertain {
+            background: rgba(100, 100, 100, 0.1);
+            color: #888;
+            border: 1px solid #444;
+        }
+
+        /* ── Risk bar ────────────────────────────────────────────── */
+        .risk-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .risk-bar-track {
+            flex: 1;
+            height: 6px;
+            background: var(--bg3);
+            border-radius: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .risk-bar-fill {
+            height: 100%;
+            border-radius: 0;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .risk-bar-fill::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: rgba(255, 255, 255, 0.6);
+        }
+
+        .risk-bar-val {
+            font-family: var(--mono);
+            font-size: 12px;
+            min-width: 36px;
+            text-align: right;
+        }
+
+        /* ── Stat row ────────────────────────────────────────────── */
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(30, 46, 34, 0.5);
+            gap: 8px;
+        }
+
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+
+        .stat-key {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 0.5px;
+            flex-shrink: 0;
+        }
+
+        .stat-val {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text-bright);
+            text-align: right;
+            word-break: break-all;
+        }
+
+        /* ── Tag ─────────────────────────────────────────────────── */
+        .tag {
+            display: inline-block;
+            padding: 2px 7px;
+            border-radius: 2px;
+            font-family: var(--mono);
+            font-size: 9px;
+            letter-spacing: 0.5px;
+            margin: 2px;
+        }
+
+        .tag-green {
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--green-dim);
+            border: 1px solid rgba(0, 192, 96, 0.2);
+        }
+
+        .tag-amber {
+            background: rgba(255, 170, 0, 0.1);
+            color: var(--amber-dim);
+            border: 1px solid rgba(255, 170, 0, 0.2);
+        }
+
+        .tag-red {
+            background: rgba(255, 51, 85, 0.1);
+            color: var(--red-dim);
+            border: 1px solid rgba(255, 51, 85, 0.2);
+        }
+
+        .tag-cyan {
+            background: rgba(0, 221, 204, 0.1);
+            color: var(--cyan);
+            border: 1px solid rgba(0, 221, 204, 0.2);
+        }
+
+        .tag-purple {
+            background: rgba(170, 119, 255, 0.1);
+            color: var(--purple);
+            border: 1px solid rgba(170, 119, 255, 0.2);
+        }
+
+        .tag-dim {
+            background: var(--bg3);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+
+        /* ── Agent result card ────────────────────────────────────── */
+        .agent-card {
+            background: var(--bg1);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.4s, transform 0.4s;
+        }
+
+        .agent-card.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .agent-card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .agent-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .agent-name {
+            font-family: var(--display);
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: var(--text-bright);
+            text-transform: uppercase;
+        }
+
+        .agent-duration {
+            margin-left: auto;
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-dim);
+        }
+
+        /* ── MITRE ATT&CK ────────────────────────────────────────── */
+        .mitre-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px;
+        }
+
+        .mitre-card {
+            background: var(--bg2);
+            border: 1px solid var(--border2);
+            border-radius: 2px;
+            padding: 10px 12px;
+            border-left: 3px solid var(--purple);
+        }
+
+        .mitre-id {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--purple);
+            letter-spacing: 1px;
+        }
+
+        .mitre-name {
+            font-family: var(--display);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-bright);
+            margin: 3px 0;
+        }
+
+        .mitre-tactic {
+            font-family: var(--mono);
+            font-size: 9px;
+            color: var(--text-dim);
+            letter-spacing: 0.5px;
+        }
+
+        /* ── Live log feed ────────────────────────────────────────── */
+        .log-terminal {
+            background: var(--bg0);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            font-family: var(--mono);
+            font-size: 11px;
+            height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            position: relative;
+        }
+
+        .log-line {
+            padding: 1px 0;
+            border-bottom: 1px solid rgba(30, 46, 34, 0.3);
+            display: flex;
+            gap: 10px;
+            animation: fadein 0.2s ease;
+        }
+
+        @keyframes fadein {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .log-ts {
+            color: var(--text-dim);
+            flex-shrink: 0;
+        }
+
+        .log-lvl {
+            flex-shrink: 0;
+            min-width: 48px;
+        }
+
+        .log-lvl.ERROR,
+        .log-lvl.CRITICAL {
+            color: var(--red);
+        }
+
+        .log-lvl.WARN {
+            color: var(--amber);
+        }
+
+        .log-lvl.INFO {
+            color: var(--green-dim);
+        }
+
+        .log-msg {
+            color: var(--text);
+            flex: 1;
+            word-break: break-all;
+        }
+
+        .log-msg.flagged {
+            color: var(--red);
+        }
+
+        .log-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .log-input {
+            flex: 1;
+            font-family: var(--mono);
+            font-size: 11px;
+        }
+
+        .log-counter {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-left: auto;
+        }
+
+        /* ── Correlator unified view ─────────────────────────────── */
+        .unified-risk-display {
+            text-align: center;
+            padding: 24px;
+        }
+
+        .unified-risk-num {
+            font-family: var(--mono);
+            font-size: 56px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            line-height: 1;
+            transition: color 0.5s;
+        }
+
+        .unified-risk-label {
+            font-family: var(--display);
+            font-size: 11px;
+            letter-spacing: 3px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-top: 6px;
+        }
+
+        .correlation-list {
+            list-style: none;
+        }
+
+        .correlation-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+        }
+
+        .correlation-item:last-child {
+            border-bottom: none;
+        }
+
+        .corr-id {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--cyan);
+            flex-shrink: 0;
+            min-width: 80px;
+        }
+
+        .rec-item {
+            display: flex;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            align-items: flex-start;
+        }
+
+        .rec-item:last-child {
+            border-bottom: none;
+        }
+
+        .rec-num {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--amber);
+            flex-shrink: 0;
+            min-width: 22px;
+        }
+
+        /* ── History table ────────────────────────────────────────── */
+        .hist-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+
+        .hist-table th {
+            font-family: var(--mono);
+            font-size: 9px;
+            letter-spacing: 1.5px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            text-align: left;
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border2);
+            background: var(--bg2);
+        }
+
+        .hist-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+            font-family: var(--mono);
+        }
+
+        .hist-table tr:hover td {
+            background: var(--bg2);
+            cursor: pointer;
+        }
+
+        /* ── Reasoning box ────────────────────────────────────────── */
+        .reasoning {
+            background: var(--bg0);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--green-dim);
+            padding: 10px 14px;
+            font-size: 12px;
+            line-height: 1.7;
+            color: var(--text);
+            border-radius: 0 2px 2px 0;
+            margin-top: 8px;
+        }
+
+        /* ── Empty / loading states ──────────────────────────────── */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 48px;
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+
+        .empty-icon {
+            font-size: 32px;
+            opacity: 0.3;
+        }
+
+        /* ── Notification toast ──────────────────────────────────── */
+        .toast-container {
+            position: fixed;
+            top: 60px;
+            right: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 10000;
+        }
+
+        .toast {
+            background: var(--bg2);
+            border: 1px solid var(--border2);
+            border-left: 3px solid var(--green);
+            padding: 10px 16px;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text);
+            border-radius: 2px;
+            animation: slide-in 0.2s ease;
+            max-width: 320px;
+        }
+
+        .toast.error {
+            border-left-color: var(--red);
+        }
+
+        .toast.warn {
+            border-left-color: var(--amber);
+        }
+
+        @keyframes slide-in {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* ── Divider ─────────────────────────────────────────────── */
+        .divider {
+            height: 1px;
+            background: var(--border);
+            margin: 12px 0;
+        }
+
+        /* ── Scrollbar ───────────────────────────────────────────── */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg0);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border2);
+            border-radius: 0;
+        }
+
+        /* ── Responsive ─────────────────────────────────────────── */
+        @media (max-width: 900px) {
+            .shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                display: none;
+            }
+
+            .grid-2,
+            .grid-3,
+            .analyse-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="shell">
+
+        <!-- TOPBAR -->
+        <header class="topbar">
+            <div class="logo">CYBER<span>-</span>MAS <span>// SOC DASHBOARD</span></div>
+            <div class="topbar-status">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <div class="status-dot" id="sys-dot"></div>
+                    <span id="sys-label" style="font-size:10px">CHECKING...</span>
+                </div>
+                <div class="clock" id="clock">--:--:--</div>
+            </div>
+        </header>
+
+        <!-- SIDEBAR -->
+        <nav class="sidebar">
+            <div class="nav-section">Analysis</div>
+            <div class="nav-item active" data-view="analyse" onclick="switchView('analyse')">
+                <span class="nav-icon">⚡</span> Analyse
+            </div>
+            <div class="nav-item" data-view="pipeline" onclick="switchView('pipeline')">
+                <span class="nav-icon">⛓</span> Pipeline
+            </div>
+            <div class="nav-section">Results</div>
+            <div class="nav-item" data-view="agents" onclick="switchView('agents')">
+                <span class="nav-icon">🤖</span> Agents
+            </div>
+            <div class="nav-item" data-view="correlator" onclick="switchView('correlator')">
+                <span class="nav-icon">🔗</span> Correlator
+            </div>
+            <div class="nav-section">Intelligence</div>
+            <div class="nav-item" data-view="mitre" onclick="switchView('mitre')">
+                <span class="nav-icon">🎯</span> MITRE ATT&CK
+            </div>
+            <div class="nav-item" data-view="logs" onclick="switchView('logs')">
+                <span class="nav-icon">📡</span> Live Logs
+            </div>
+            <div class="nav-section">System</div>
+            <div class="nav-item" data-view="history" onclick="switchView('history')">
+                <span class="nav-icon">🗃</span> History
+            </div>
+        </nav>
+
+        <!-- MAIN -->
+        <main class="main">
+
+            <!-- ══ VIEW: ANALYSE ══════════════════════════════════ -->
+            <div class="view active" id="view-analyse">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="ph-accent" style="background:var(--green)"></div>
+                        THREAT ANALYSIS — INPUT VECTORS
+                    </div>
+                    <div class="panel-body">
+                        <div class="analyse-grid">
+                            <div>
+                                <div class="field-label">Email Payload</div>
+                                <textarea id="inp-email"
+                                    placeholder="Paste raw email (RFC-2822 or body text)&#10;&#10;From: attacker@phish.com&#10;Subject: URGENT: Verify account&#10;..."></textarea>
+                            </div>
+                            <div>
+                                <div class="field-label">Log Data</div>
+                                <textarea id="inp-log"
+                                    placeholder="Paste log lines (syslog, auth.log, access.log)&#10;&#10;2024-03-15 02:13:44 WARN Failed password for root from 203.0.113.42&#10;..."></textarea>
+                            </div>
+                            <div>
+                                <div class="field-label">IP / Host Target</div>
+                                <input id="inp-ip" type="text" placeholder="192.168.1.1  or  scanme.nmap.org" />
+                                <div style="margin-top:12px">
+                                    <div class="field-label">Quick load</div>
+                                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+                                        <span class="tag tag-amber" style="cursor:pointer"
+                                            onclick="loadDemo('phishing')">Demo: Phishing</span>
+                                        <span class="tag tag-red" style="cursor:pointer"
+                                            onclick="loadDemo('bruteforce')">Demo: Brute Force</span>
+                                        <span class="tag tag-cyan" style="cursor:pointer"
+                                            onclick="loadDemo('scan')">Demo: Port Scan</span>
+                                        <span class="tag tag-purple" style="cursor:pointer"
+                                            onclick="loadDemo('all')">Demo: All Vectors</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top:16px;display:flex;align-items:center;gap:12px">
+                            <button class="btn" id="run-btn" onclick="runAnalysis()">⚡ RUN ANALYSIS</button>
+                            <button class="btn btn-danger" onclick="clearAll()" style="padding:10px 16px">✕
+                                CLEAR</button>
+                            <span id="run-status"
+                                style="font-family:var(--mono);font-size:10px;color:var(--text-dim)"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick stats bar -->
+                <div id="quick-stats" style="display:none" class="panel">
+                    <div class="panel-body" style="padding:12px 16px">
+                        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">THREAT
+                                    LEVEL</span>
+                                <span class="verdict" id="qs-verdict"></span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:200px">
+                                <span
+                                    style="font-family:var(--mono);font-size:10px;color:var(--text-dim);white-space:nowrap">UNIFIED
+                                    RISK</span>
+                                <div class="risk-bar-wrap" style="flex:1">
+                                    <div class="risk-bar-track" style="flex:1">
+                                        <div class="risk-bar-fill" id="qs-bar" style="width:0%"></div>
+                                    </div>
+                                    <span class="risk-bar-val" id="qs-score">0.00</span>
+                                </div>
+                            </div>
+                            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="qs-corr">
+                            </div>
+                            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="qs-dur"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ VIEW: PIPELINE ══════════════════════════════════ -->
+            <div class="view" id="view-pipeline">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="ph-accent" style="background:var(--cyan)"></div>
+                        AGENT EXECUTION PIPELINE
+                    </div>
+                    <div class="panel-body">
+                        <div class="pipeline" id="pipeline-graph">
+                            <div class="pipe-step" id="pipe-input">
+                                <div class="pipe-icon">📥</div>
+                                <div class="pipe-label">INPUT</div>
+                                <div class="pipe-status" id="ps-input">READY</div>
+                            </div>
+                            <div class="pipe-step" id="pipe-email">
+                                <div class="pipe-icon">📧</div>
+                                <div class="pipe-label">EMAIL</div>
+                                <div class="pipe-status" id="ps-email">IDLE</div>
+                            </div>
+                            <div class="pipe-step" id="pipe-log">
+                                <div class="pipe-icon">📋</div>
+                                <div class="pipe-label">LOG</div>
+                                <div class="pipe-status" id="ps-log">IDLE</div>
+                            </div>
+                            <div class="pipe-step" id="pipe-ip">
+                                <div class="pipe-icon">🔍</div>
+                                <div class="pipe-label">IP SCAN</div>
+                                <div class="pipe-status" id="ps-ip">IDLE</div>
+                            </div>
+                            <div class="pipe-step" id="pipe-correlator">
+                                <div class="pipe-icon">🔗</div>
+                                <div class="pipe-label">CORRELATOR</div>
+                                <div class="pipe-status" id="ps-corr">IDLE</div>
+                            </div>
+                            <div class="pipe-step" id="pipe-output">
+                                <div class="pipe-icon">📊</div>
+                                <div class="pipe-label">REPORT</div>
+                                <div class="pipe-status" id="ps-output">IDLE</div>
+                            </div>
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <!-- Timing breakdown -->
+                        <div id="timing-breakdown">
+                            <div
+                                style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:1px;margin-bottom:10px">
+                                EXECUTION TIMELINE</div>
+                            <div id="timing-bars"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="ph-accent" style="background:var(--cyan)"></div>
+                        SYSTEM EVENT LOG
+                    </div>
+                    <div class="panel-body" style="padding:0">
+                        <div class="log-terminal" id="event-log">
+                            <div class="empty-state">
+                                <div class="empty-icon">⛓</div>
+                                <span>Run an analysis to see pipeline events</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ VIEW: AGENTS ════════════════════════════════════ -->
+            <div class="view" id="view-agents">
+                <div id="agents-container">
+                    <div class="empty-state" style="margin-top:40px">
+                        <div class="empty-icon">🤖</div>
+                        <span>No analysis results yet — run an analysis first</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ VIEW: CORRELATOR ════════════════════════════════ -->
+            <div class="view" id="view-correlator">
+                <div id="corr-container">
+                    <div class="empty-state" style="margin-top:40px">
+                        <div class="empty-icon">🔗</div>
+                        <span>Correlator results will appear here</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ VIEW: MITRE ══════════════════════════════════ -->
+            <div class="view" id="view-mitre">
+                <div id="mitre-container">
+                    <div class="empty-state" style="margin-top:40px">
+                        <div class="empty-icon">🎯</div>
+                        <span>MITRE ATT&CK mappings will appear after analysis</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ VIEW: LIVE LOGS ═══════════════════════════════ -->
+            <div class="view" id="view-logs">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="ph-accent" style="background:var(--amber)"></div>
+                        LIVE LOG MONITOR
+                    </div>
+                    <div class="panel-body">
+                        <div class="log-controls">
+                            <input id="log-input-text" class="log-input" type="text"
+                                placeholder="Paste a log line and press Enter to analyse it..." />
+                            <button class="btn" onclick="submitLogLine()"
+                                style="padding:8px 16px;font-size:11px">ANALYSE LINE</button>
+                            <span class="log-counter"><span id="log-line-count">0</span> lines</span>
+                        </div>
+                        <div class="log-terminal" id="live-log-feed"></div>
+                    </div>
+                </div>
+
+                <div id="live-log-result"></div>
+            </div>
+
+            <!-- ══ VIEW: HISTORY ══════════════════════════════════ -->
+            <div class="view" id="view-history">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="ph-accent" style="background:var(--purple)"></div>
+                        ANALYSIS HISTORY
+                    </div>
+                    <div class="panel-body" style="padding:0;overflow-x:auto">
+                        <table class="hist-table" id="history-table">
+                            <thead>
+                                <tr>
+                                    <th>REPORT ID</th>
+                                    <th>TIMESTAMP</th>
+                                    <th>AGENTS</th>
+                                    <th>VERDICT</th>
+                                    <th>RISK</th>
+                                    <th>CORRELATIONS</th>
+                                    <th>DURATION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-body">
+                                <tr>
+                                    <td colspan="7" style="text-align:center;color:var(--text-dim);padding:24px">No
+                                        history yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Toast container -->
+    <div class="toast-container" id="toasts"></div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════
+        // STATE
+        // ═══════════════════════════════════════════════════════════
+        const state = {
+            running: false,
+            lastReport: null,
+            agentResults: {},
+            correlatorResult: null,
+            logLines: [],
+        };
+
+        // ═══════════════════════════════════════════════════════════
+        // CLOCK
+        // ═══════════════════════════════════════════════════════════
+        setInterval(() => {
+            document.getElementById('clock').textContent =
+                new Date().toTimeString().slice(0, 8);
+        }, 1000);
+
+        // ═══════════════════════════════════════════════════════════
+        // SYSTEM STATUS CHECK
+        // ═══════════════════════════════════════════════════════════
+        async function checkStatus() {
+            try {
+                const r = await fetch('/api/status');
+                const d = await r.json();
+                const dot = document.getElementById('sys-dot');
+                const lbl = document.getElementById('sys-label');
+                if (d.ready) {
+                    dot.className = 'status-dot';
+                    lbl.textContent = 'SYSTEMS NOMINAL';
+                } else {
+                    dot.className = 'status-dot warn';
+                    lbl.textContent = 'GROQ KEY MISSING';
+                }
+            } catch (e) {
+                document.getElementById('sys-dot').className = 'status-dot error';
+                document.getElementById('sys-label').textContent = 'API OFFLINE';
+            }
+        }
+        checkStatus();
+        setInterval(checkStatus, 30000);
+
+        // ═══════════════════════════════════════════════════════════
+        // NAVIGATION
+        // ═══════════════════════════════════════════════════════════
+        function switchView(name) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('view-' + name).classList.add('active');
+            document.querySelector(`[data-view="${name}"]`).classList.add('active');
+            if (name === 'history') loadHistory();
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // DEMO DATA
+        // ═══════════════════════════════════════════════════════════
+        const DEMOS = {
+            phishing: {
+                email: `From: security-alert@paypa1-verify.com\nReply-To: noreply@paypa1-verify.com\nTo: victim@example.com\nSubject: URGENT: Your PayPal account has been suspended\n\nDear Customer,\nWe detected suspicious activity on your account.\nVerify immediately: http://paypa1-verify.com/restore?token=abc123\nFailure to verify in 24h = permanent suspension.\n\nPayPal Security Team`,
+                log: '', ip: ''
+            },
+            bruteforce: {
+                email: '',
+                log: `2024-03-15 02:13:40 WARN sshd: Failed password for root from 203.0.113.42 port 51234 ssh2\n2024-03-15 02:13:41 WARN sshd: Failed password for root from 203.0.113.42 port 51235 ssh2\n2024-03-15 02:13:42 WARN sshd: Failed password for admin from 203.0.113.42 port 51236 ssh2\n2024-03-15 02:13:43 WARN sshd: Failed password for ubuntu from 203.0.113.42 port 51237 ssh2\n2024-03-15 02:13:44 WARN sshd: Failed password for root from 203.0.113.42 port 51238 ssh2\n2024-03-15 02:13:47 INFO sshd: Accepted password for root from 203.0.113.42 port 51241 ssh2`,
+                ip: ''
+            },
+            scan: {
+                email: '', log: '', ip: 'scanme.nmap.org'
+            },
+            all: {
+                email: `From: security-alert@paypa1-verify.com\nSubject: URGENT: Your account has been suspended\n\nClick here to verify: http://paypa1-verify.com/restore?token=abc123`,
+                log: `2024-03-15 02:13:40 WARN sshd: Failed password for root from 203.0.113.42 port 51234\n2024-03-15 02:13:41 WARN sshd: Failed password for root from 203.0.113.42 port 51235\n2024-03-15 02:13:42 WARN sshd: Failed password for admin from 203.0.113.42 port 51236\n2024-03-15 02:13:43 WARN sshd: Failed password for root from 203.0.113.42 port 51237\n2024-03-15 02:13:47 INFO sshd: Accepted password for root from 203.0.113.42 port 51241`,
+                ip: '203.0.113.42'
+            }
+        };
+
+        function loadDemo(key) {
+            const d = DEMOS[key];
+            document.getElementById('inp-email').value = d.email;
+            document.getElementById('inp-log').value = d.log;
+            document.getElementById('inp-ip').value = d.ip;
+            toast(`Demo loaded: ${key}`, 'info');
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // PIPELINE STATE HELPERS
+        // ═══════════════════════════════════════════════════════════
+        function setPipeState(step, state, label) {
+            const el = document.getElementById('pipe-' + step);
+            const sl = document.getElementById('ps-' + step);
+            if (!el) return;
+            el.className = 'pipe-step ' + state;
+            if (sl && label) sl.textContent = label;
+        }
+
+        function resetPipeline() {
+            ['input', 'email', 'log', 'ip', 'correlator', 'output'].forEach(s => {
+                setPipeState(s, '', 'IDLE');
+            });
+            document.getElementById('timing-bars').innerHTML = '';
+        }
+
+        function logEvent(msg, type = 'info') {
+            const el = document.getElementById('event-log');
+            const first = el.querySelector('.empty-state');
+            if (first) first.remove();
+
+            const colors = { info: 'var(--green-dim)', warn: 'var(--amber)', error: 'var(--red)', dim: 'var(--text-dim)' };
+            const ts = new Date().toTimeString().slice(0, 8);
+            const div = document.createElement('div');
+            div.className = 'log-line';
+            div.innerHTML = `<span class="log-ts">${ts}</span><span style="color:${colors[type] || colors.info};font-family:var(--mono);font-size:11px">${msg}</span>`;
+            el.appendChild(div);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // RISK BAR COLOUR
+        // ═══════════════════════════════════════════════════════════
+        function riskColor(score) {
+            if (score >= 0.85) return 'var(--red)';
+            if (score >= 0.65) return '#ff7799';
+            if (score >= 0.40) return 'var(--amber)';
+            return 'var(--green)';
+        }
+
+        function verdictClass(v) {
+            const map = {
+                critical: 'critical', high: 'high', medium: 'medium', low: 'low',
+                phishing: 'phishing', malicious: 'malicious', vulnerable: 'vulnerable',
+                suspicious: 'suspicious', spam: 'suspicious',
+                legitimate: 'legitimate', benign: 'benign', clean: 'clean',
+                uncertain: 'uncertain'
+            };
+            return map[v?.toLowerCase()] || 'uncertain';
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // MAIN ANALYSIS RUNNER
+        // ═══════════════════════════════════════════════════════════
+        async function runAnalysis() {
+            const emailText = document.getElementById('inp-email').value.trim();
+            const logText = document.getElementById('inp-log').value.trim();
+            const ipTarget = document.getElementById('inp-ip').value.trim();
+
+            if (!emailText && !logText && !ipTarget) {
+                toast('Provide at least one input vector', 'error');
+                return;
+            }
+
+            if (state.running) return;
+            state.running = true;
+            state.agentResults = {};
+            state.correlatorResult = null;
+
+            // Reset UI
+            document.getElementById('run-btn').disabled = true;
+            document.getElementById('run-status').textContent = 'Connecting...';
+            document.getElementById('quick-stats').style.display = 'none';
+            document.getElementById('agents-container').innerHTML = '';
+            document.getElementById('corr-container').innerHTML = '';
+            document.getElementById('mitre-container').innerHTML = '';
+            resetPipeline();
+            document.getElementById('event-log').innerHTML = '';
+
+            // Switch to pipeline view to show progress
+            switchView('pipeline');
+
+            logEvent('▶ Analysis started', 'info');
+            setPipeState('input', 'done', 'READY');
+
+            const body = JSON.stringify({
+                email_text: emailText || null,
+                log_text: logText || null,
+                ip_target: ipTarget || null,
+            });
+
+            try {
+                const resp = await fetch('/api/analyse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body,
+                });
+
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}`);
+                }
+
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop(); // keep incomplete last chunk
+
+                    for (const chunk of lines) {
+                        if (!chunk.startsWith('data:')) continue;
+                        const raw = chunk.slice(5).trim();
+                        try {
+                            const evt = JSON.parse(raw);
+                            handleSSEEvent(evt);
+                        } catch (e) { }
+                    }
+                }
+
+            } catch (e) {
+                toast('Connection error: ' + e.message, 'error');
+                logEvent('✗ Connection failed: ' + e.message, 'error');
+            }
+
+            state.running = false;
+            document.getElementById('run-btn').disabled = false;
+            document.getElementById('run-status').textContent = '';
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // SSE EVENT HANDLER
+        // ═══════════════════════════════════════════════════════════
+        const agentTimes = {};
+
+        function handleSSEEvent(evt) {
+            switch (evt.event) {
+
+                case 'init':
+                    logEvent(`◉ Report ID: ${evt.report_id} — agents: [${evt.agents.join(', ')}]`, 'dim');
+                    evt.agents.forEach(a => setPipeState(a, '', 'QUEUED'));
+                    break;
+
+                case 'start':
+                    setPipeState(evt.agent, 'running', 'RUNNING');
+                    logEvent(`► ${evt.agent.toUpperCase()} agent started`, 'info');
+                    agentTimes[evt.agent] = Date.now();
+                    document.getElementById('run-status').textContent = `Running ${evt.agent} agent...`;
+                    break;
+
+                case 'result': {
+                    const dur = agentTimes[evt.agent] ? ((Date.now() - agentTimes[evt.agent]) / 1000).toFixed(1) : '?';
+                    const r = evt.data;
+                    const ok = r.verdict !== 'uncertain' || r.risk_score > 0;
+                    setPipeState(evt.agent, ok ? 'done' : 'error', `${dur}s`);
+                    logEvent(`✓ ${evt.agent.toUpperCase()} → verdict=${r.verdict}  risk=${(r.risk_score || 0).toFixed(2)}  (${dur}s)`, 'info');
+
+                    state.agentResults[evt.agent] = r;
+                    renderAgentCard(r);
+                    renderMitreTechniques(r);
+                    addTimingBar(evt.agent, parseFloat(dur));
+                    break;
+                }
+
+                case 'correlating':
+                    setPipeState('correlator', 'running', 'RUNNING');
+                    logEvent('⧖ Correlator running...', 'dim');
+                    document.getElementById('run-status').textContent = 'Correlating...';
+                    agentTimes['correlator'] = Date.now();
+                    break;
+
+                case 'complete': {
+                    const report = evt.data;
+                    const c = report.correlator;
+                    const dur = agentTimes['correlator'] ? ((Date.now() - agentTimes['correlator']) / 1000).toFixed(1) : '?';
+
+                    setPipeState('correlator', 'done', `${dur}s`);
+                    setPipeState('output', 'done', 'READY');
+                    addTimingBar('correlator', parseFloat(dur));
+
+                    state.lastReport = report;
+                    state.correlatorResult = c;
+
+                    renderCorrelator(c);
+                    updateQuickStats(c);
+
+                    logEvent(`■ Analysis complete — verdict=${c.verdict}  unified_risk=${c.unified_risk?.toFixed(3)}  correlations=${c.correlations?.length || 0}`, 'info');
+                    logEvent(`  Total duration: ${report.duration}s`, 'dim');
+
+                    toast(`Analysis complete — ${c.verdict?.toUpperCase()}`, c.verdict === 'critical' || c.verdict === 'high' ? 'error' : 'info');
+
+                    // Add to local history display
+                    addHistoryRow(report);
+
+                    document.getElementById('run-status').textContent = `Done in ${report.duration}s`;
+                    break;
+                }
+
+                case 'error':
+                    logEvent('✗ Error: ' + evt.message, 'error');
+                    toast(evt.message, 'error');
+                    break;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // RENDER: QUICK STATS BAR
+        // ═══════════════════════════════════════════════════════════
+        function updateQuickStats(c) {
+            const risk = c.unified_risk || 0;
+            const vc = verdictClass(c.verdict);
+            document.getElementById('quick-stats').style.display = 'block';
+            document.getElementById('qs-verdict').textContent = c.verdict?.toUpperCase() || '?';
+            document.getElementById('qs-verdict').className = `verdict ${vc}`;
+            document.getElementById('qs-bar').style.width = (risk * 100) + '%';
+            document.getElementById('qs-bar').style.background = riskColor(risk);
+            document.getElementById('qs-score').style.color = riskColor(risk);
+            document.getElementById('qs-score').textContent = risk.toFixed(2);
+            document.getElementById('qs-corr').textContent = `${c.correlations?.length || 0} correlation(s)`;
+            document.getElementById('qs-dur').textContent = `${c._duration_secs || '?'}s`;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // RENDER: AGENT CARD
+        // ═══════════════════════════════════════════════════════════
+        const AGENT_ICONS = { email: '📧', log: '📋', ip: '🔍' };
+        const AGENT_COLORS = {
+            email: 'var(--cyan)', log: 'var(--amber)', ip: 'var(--purple)'
+        };
+
+        function renderAgentCard(r) {
+            const container = document.getElementById('agents-container');
+            const existing = document.getElementById('card-' + r.agent);
+            if (existing) existing.remove();
+
+            const risk = r.risk_score || 0;
+            const color = AGENT_COLORS[r.agent] || 'var(--green)';
+            const vc = verdictClass(r.verdict);
+            const icon = AGENT_ICONS[r.agent] || '🤖';
+
+            // Build indicators HTML
+            const inds = (r.indicators || []).map(i =>
+                `<span class="tag tag-red">${i}</span>`
+            ).join('');
+
+            // Signatures (log agent)
+            const sigs = (r.signatures_hit || []).map(s =>
+                `<span class="tag tag-amber">${s}</span>`
+            ).join('');
+
+            // Email metadata
+            let extraHtml = '';
+            if (r.email_metadata) {
+                const m = r.email_metadata;
+                extraHtml = `
+      <div class="stat-row"><span class="stat-key">Subject</span><span class="stat-val">${m.subject || '—'}</span></div>
+      <div class="stat-row"><span class="stat-key">Sender</span><span class="stat-val">${m.sender || '—'}</span></div>
+      <div class="stat-row"><span class="stat-key">Reply-To</span><span class="stat-val">${m.reply_to || '—'}</span></div>
+      <div class="stat-row"><span class="stat-key">Links</span><span class="stat-val">${m.link_count || 0}</span></div>
+      <div class="stat-row"><span class="stat-key">Attachments</span><span class="stat-val">${m.has_attachments ? 'YES' : 'NO'}</span></div>
+    `;
+                if (r.rag_match) {
+                    extraHtml += `<div class="stat-row"><span class="stat-key">RAG match</span><span class="stat-val">${r.rag_match.label} (sim=${r.rag_match.similarity?.toFixed(3)})</span></div>`;
+                }
+            }
+
+            // Log stats
+            if (r.stats) {
+                const s = r.stats;
+                extraHtml = `
+      <div class="stat-row"><span class="stat-key">Total lines</span><span class="stat-val">${s.total_lines}</span></div>
+      <div class="stat-row"><span class="stat-key">Unique IPs</span><span class="stat-val">${s.unique_ips}</span></div>
+      <div class="stat-row"><span class="stat-key">Time span</span><span class="stat-val">${s.time_span_secs}s</span></div>
+      <div class="stat-row"><span class="stat-key">Top sources</span><span class="stat-val">${(s.top_sources || []).join(', ') || '—'}</span></div>
+      <div class="stat-row"><span class="stat-key">Error rate</span><span class="stat-val">${(s.error_rate * 100).toFixed(1)}%</span></div>
+    `;
+            }
+
+            // IP agent
+            if (r.target) {
+                const ports = (r.open_ports || []).slice(0, 8).map(p =>
+                    `<span class="tag tag-cyan">${p.port}/${p.protocol} ${p.service}</span>`
+                ).join('');
+                const cves = (r.cves || []).slice(0, 3).map(c =>
+                    `<span class="tag tag-red">${c.cve_id} CVSS=${c.cvss_score}</span>`
+                ).join('');
+                extraHtml = `
+      <div class="stat-row"><span class="stat-key">Target</span><span class="stat-val">${r.target}</span></div>
+      <div class="stat-row"><span class="stat-key">OS guess</span><span class="stat-val">${r.os_guess || 'unknown'}</span></div>
+      <div class="stat-row"><span class="stat-key">Open ports</span><span class="stat-val">${ports || 'none'}</span></div>
+      <div class="stat-row"><span class="stat-key">CVEs (top 3)</span><span class="stat-val">${cves || 'none'}</span></div>
+      <div class="stat-row"><span class="stat-key">Scan time</span><span class="stat-val">${r.scan_duration}s</span></div>
+    `;
+            }
+
+            const card = document.createElement('div');
+            card.className = 'agent-card';
+            card.id = 'card-' + r.agent;
+            card.style.marginBottom = '16px';
+            card.innerHTML = `
+    <div class="agent-card-header" style="border-left: 3px solid ${color}">
+      <div class="agent-avatar" style="background:rgba(0,0,0,0.4);border:1px solid ${color}">
+        ${icon}
+      </div>
+      <div>
+        <div class="agent-name" style="color:${color}">${r.agent.toUpperCase()} AGENT</div>
+        <span class="verdict ${vc}">${r.verdict?.toUpperCase() || '?'}</span>
+      </div>
+      <div class="agent-duration">⏱ ${r._duration_secs || '?'}s</div>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="margin-bottom:10px">
+        <div class="stat-key" style="margin-bottom:4px">RISK SCORE</div>
+        <div class="risk-bar-wrap">
+          <div class="risk-bar-track" style="flex:1">
+            <div class="risk-bar-fill" style="width:${risk * 100}%;background:${riskColor(risk)}"></div>
+          </div>
+          <span class="risk-bar-val" style="color:${riskColor(risk)}">${risk.toFixed(2)}</span>
+        </div>
+      </div>
+      ${extraHtml ? `<div style="margin-bottom:10px">${extraHtml}</div>` : ''}
+      ${sigs ? `<div style="margin-bottom:8px"><div class="stat-key" style="margin-bottom:4px">SIGNATURES</div>${sigs}</div>` : ''}
+      ${inds ? `<div style="margin-bottom:8px"><div class="stat-key" style="margin-bottom:4px">INDICATORS</div>${inds}</div>` : ''}
+      ${r.reasoning ? `<div class="stat-key" style="margin-bottom:4px">REASONING</div><div class="reasoning">${r.reasoning}</div>` : ''}
+    </div>
+  `;
+
+            container.appendChild(card);
+            requestAnimationFrame(() => card.classList.add('visible'));
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // RENDER: CORRELATOR
+        // ═══════════════════════════════════════════════════════════
+        function renderCorrelator(c) {
+            const risk = c.unified_risk || 0;
+            const vc = verdictClass(c.verdict);
+            const color = riskColor(risk);
+
+            const corrItems = (c.correlations || []).map(corr => {
+                const ind = (c.unified_indicators || []).find(i =>
+                    i.toLowerCase().includes(corr.split('_').slice(1).join(' ').toLowerCase().slice(0, 10))
+                ) || '';
+                return `<li class="correlation-item">
+      <span class="corr-id">${corr}</span>
+      <span style="color:var(--text);font-size:11px">${ind}</span>
+    </li>`;
+            }).join('');
+
+            const recItems = (c.recommendations || []).map((r, i) =>
+                `<div class="rec-item">
+      <span class="rec-num">${String(i + 1).padStart(2, '0')}</span>
+      <span>${r}</span>
+    </div>`
+            ).join('');
+
+            const summaryRows = Object.entries(c.agent_summary || {})
+                .filter(([, v]) => v)
+                .map(([agent, val]) => `
+      <div class="stat-row">
+        <span class="stat-key">${agent.toUpperCase()}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="verdict ${verdictClass(val.verdict)}" style="font-size:10px;padding:2px 7px">${val.verdict}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:${riskColor(val.risk_score)}">${val.risk_score?.toFixed(2)}</span>
+        </div>
+      </div>`
+                ).join('');
+
+            document.getElementById('corr-container').innerHTML = `
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="panel">
+        <div class="panel-header"><div class="ph-accent" style="background:${color}"></div>UNIFIED RISK SCORE</div>
+        <div class="panel-body">
+          <div class="unified-risk-display">
+            <div class="unified-risk-num" style="color:${color}">${(risk * 100).toFixed(0)}%</div>
+            <div class="unified-risk-label">THREAT LEVEL</div>
+            <div style="margin-top:16px"><span class="verdict ${vc}" style="font-size:16px;padding:6px 18px">${c.verdict?.toUpperCase() || '?'}</span></div>
+            <div style="margin-top:12px">
+              <div class="risk-bar-track">
+                <div class="risk-bar-fill" style="width:${risk * 100}%;background:${color}"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="ph-accent" style="background:var(--cyan)"></div>AGENT SUMMARY</div>
+        <div class="panel-body">${summaryRows}</div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="panel">
+        <div class="panel-header"><div class="ph-accent" style="background:var(--cyan)"></div>CORRELATION RULES FIRED</div>
+        <div class="panel-body">
+          ${c.correlations?.length
+                    ? `<ul class="correlation-list">${corrItems}</ul>`
+                    : '<div style="color:var(--text-dim);font-family:var(--mono);font-size:11px">No cross-agent correlations detected</div>'
+                }
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="ph-accent" style="background:var(--amber)"></div>RECOMMENDATIONS</div>
+        <div class="panel-body">
+          ${c.recommendations?.length
+                    ? recItems
+                    : '<div style="color:var(--text-dim);font-family:var(--mono);font-size:11px">No recommendations generated</div>'
+                }
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header"><div class="ph-accent" style="background:var(--green)"></div>HOLISTIC REASONING</div>
+      <div class="panel-body">
+        <div class="reasoning">${c.reasoning || 'No reasoning available'}</div>
+      </div>
+    </div>
+  `;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // RENDER: MITRE ATT&CK
+        // ═══════════════════════════════════════════════════════════
+        const allMitreTechniques = new Map(); // id → technique
+
+        function renderMitreTechniques(r) {
+            (r.mitre_techniques || []).forEach(t => {
+                allMitreTechniques.set(t.id, { ...t, agent: r.agent });
+            });
+
+            const container = document.getElementById('mitre-container');
+            if (allMitreTechniques.size === 0) return;
+
+            // Group by tactic
+            const byTactic = {};
+            allMitreTechniques.forEach(t => {
+                if (!byTactic[t.tactic]) byTactic[t.tactic] = [];
+                byTactic[t.tactic].push(t);
+            });
+
+            let html = '';
+            Object.entries(byTactic).forEach(([tactic, techs]) => {
+                const cards = techs.map(t => `
+      <div class="mitre-card">
+        <div class="mitre-id">${t.id}</div>
+        <div class="mitre-name">${t.name}</div>
+        <div class="mitre-tactic">${t.tactic} · via ${t.agent}</div>
+      </div>
+    `).join('');
+                html += `
+      <div class="panel" style="margin-bottom:12px">
+        <div class="panel-header">
+          <div class="ph-accent" style="background:var(--purple)"></div>
+          ${tactic.toUpperCase()}
+          <span class="tag tag-purple" style="margin-left:auto">${techs.length} technique${techs.length > 1 ? 's' : ''}</span>
+        </div>
+        <div class="panel-body">
+          <div class="mitre-grid">${cards}</div>
+        </div>
+      </div>
+    `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // RENDER: TIMING BARS
+        // ═══════════════════════════════════════════════════════════
+        const timings = {};
+
+        function addTimingBar(agent, dur) {
+            timings[agent] = dur;
+            const maxDur = Math.max(...Object.values(timings), 1);
+            const colors = { email: 'var(--cyan)', log: 'var(--amber)', ip: 'var(--purple)', correlator: 'var(--green)' };
+            let html = '';
+            Object.entries(timings).forEach(([a, d]) => {
+                const pct = (d / maxDur * 100).toFixed(0);
+                html += `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);min-width:80px">${a.toUpperCase()}</span>
+        <div style="flex:1;background:var(--bg3);height:4px">
+          <div style="width:${pct}%;background:${colors[a] || 'var(--green)'};height:100%;transition:width 0.5s"></div>
+        </div>
+        <span style="font-family:var(--mono);font-size:10px;color:${colors[a] || 'var(--green)'};min-width:36px">${d}s</span>
+      </div>`;
+            });
+            document.getElementById('timing-bars').innerHTML = html;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // LIVE LOG FEED
+        // ═══════════════════════════════════════════════════════════
+        document.getElementById('log-input-text').addEventListener('keydown', e => {
+            if (e.key === 'Enter') submitLogLine();
+        });
+
+        async function submitLogLine() {
+            const input = document.getElementById('log-input-text');
+            const line = input.value.trim();
+            if (!line) return;
+            input.value = '';
+
+            // Append to feed
+            appendLogLine(line);
+            state.logLines.push(line);
+            document.getElementById('log-line-count').textContent = state.logLines.length;
+
+            // Auto-analyse if we have >= 3 lines
+            if (state.logLines.length >= 3) {
+                const resultEl = document.getElementById('live-log-result');
+                resultEl.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--amber);padding:8px">⧖ Analysing ${state.logLines.length} log lines...</div>`;
+
+                try {
+                    const resp = await fetch('/api/analyse/log', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ payload: state.logLines.join('\n') }),
+                    });
+                    const r = await resp.json();
+                    const vc = verdictClass(r.verdict);
+                    resultEl.innerHTML = `
+        <div class="panel" style="margin-top:12px">
+          <div class="panel-header" style="font-size:11px">QUICK LOG ANALYSIS</div>
+          <div class="panel-body" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <span class="verdict ${vc}">${r.verdict?.toUpperCase()}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:${riskColor(r.risk_score || 0)}">risk=${(r.risk_score || 0).toFixed(2)}</span>
+            ${(r.signatures_hit || []).map(s => `<span class="tag tag-amber">${s}</span>`).join('')}
+            <span style="font-size:11px;color:var(--text-dim);flex:1">${r.reasoning?.slice(0, 120) || ''}</span>
+          </div>
+        </div>`;
+                } catch (e) {
+                    resultEl.innerHTML = `<div style="color:var(--red);font-family:var(--mono);font-size:11px;padding:8px">Error: ${e.message}</div>`;
+                }
+            }
+        }
+
+        function appendLogLine(line) {
+            const feed = document.getElementById('live-log-feed');
+            const ts = new Date().toTimeString().slice(0, 8);
+
+            // Detect level
+            let lvl = 'INFO';
+            const u = line.toUpperCase();
+            if (u.includes('ERROR') || u.includes('CRITICAL')) lvl = 'ERROR';
+            else if (u.includes('WARN')) lvl = 'WARN';
+
+            const flagged = /failed|denied|attack|malware|exploit|phish|brute|unauthorized/i.test(line);
+
+            const div = document.createElement('div');
+            div.className = 'log-line';
+            div.innerHTML = `
+    <span class="log-ts">${ts}</span>
+    <span class="log-lvl ${lvl}">${lvl}</span>
+    <span class="log-msg ${flagged ? 'flagged' : ''}">${line}</span>
+  `;
+            feed.appendChild(div);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // HISTORY
+        // ═══════════════════════════════════════════════════════════
+        const localHistory = [];
+
+        function addHistoryRow(report) {
+            localHistory.unshift(report);
+            renderHistory();
+        }
+
+        async function loadHistory() {
+            try {
+                const r = await fetch('/api/history?limit=20');
+                const d = await r.json();
+                // Merge server history with local
+                const ids = new Set(localHistory.map(r => r.report_id));
+                d.reports.forEach(r => { if (!ids.has(r.report_id)) localHistory.push(r); });
+            } catch (e) { }
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const tbody = document.getElementById('history-body');
+            if (!localHistory.length) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:24px">No history yet</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = localHistory.map(r => {
+                const c = r.correlator || {};
+                const vc = verdictClass(c.verdict);
+                const agents = (r.agents || []).map(a => a.agent).join(', ');
+                return `<tr onclick="restoreReport('${r.report_id}')">
+      <td style="color:var(--cyan)">${r.report_id}</td>
+      <td style="color:var(--text-dim)">${r.timestamp || '—'}</td>
+      <td>${agents}</td>
+      <td><span class="verdict ${vc}" style="font-size:10px;padding:2px 7px">${c.verdict?.toUpperCase() || '—'}</span></td>
+      <td style="color:${riskColor(c.unified_risk || 0)}">${(c.unified_risk || 0).toFixed(2)}</td>
+      <td>${(c.correlations || []).length}</td>
+      <td style="color:var(--text-dim)">${r.duration || '?'}s</td>
+    </tr>`;
+            }).join('');
+        }
+
+        function restoreReport(id) {
+            const r = localHistory.find(x => x.report_id === id);
+            if (!r) return;
+            state.lastReport = r;
+            state.correlatorResult = r.correlator;
+            state.agentResults = {};
+
+            document.getElementById('agents-container').innerHTML = '';
+            document.getElementById('mitre-container').innerHTML = '';
+            allMitreTechniques.clear();
+
+            (r.agents || []).forEach(a => {
+                state.agentResults[a.agent] = a;
+                renderAgentCard(a);
+                renderMitreTechniques(a);
+            });
+
+            if (r.correlator) {
+                renderCorrelator(r.correlator);
+                updateQuickStats(r.correlator);
+            }
+
+            switchView('agents');
+            toast(`Restored report ${id}`, 'info');
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // UTILITIES
+        // ═══════════════════════════════════════════════════════════
+        function clearAll() {
+            document.getElementById('inp-email').value = '';
+            document.getElementById('inp-log').value = '';
+            document.getElementById('inp-ip').value = '';
+            document.getElementById('quick-stats').style.display = 'none';
+            document.getElementById('agents-container').innerHTML = `
+    <div class="empty-state" style="margin-top:40px">
+      <div class="empty-icon">🤖</div>
+      <span>No analysis results yet — run an analysis first</span>
+    </div>`;
+            document.getElementById('corr-container').innerHTML = `
+    <div class="empty-state" style="margin-top:40px">
+      <div class="empty-icon">🔗</div>
+      <span>Correlator results will appear here</span>
+    </div>`;
+            document.getElementById('mitre-container').innerHTML = `
+    <div class="empty-state" style="margin-top:40px">
+      <div class="empty-icon">🎯</div>
+      <span>MITRE ATT&CK mappings will appear after analysis</span>
+    </div>`;
+            allMitreTechniques.clear();
+            resetPipeline();
+            Object.assign(state, { running: false, lastReport: null, agentResults: {}, correlatorResult: null });
+        }
+
+        function toast(msg, type = 'info') {
+            const container = document.getElementById('toasts');
+            const el = document.createElement('div');
+            el.className = `toast ${type === 'error' ? 'error' : type === 'warn' ? 'warn' : ''}`;
+            el.textContent = msg;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 4000);
+        }
+    </script>
+</body>
+
+</html>
