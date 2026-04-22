@@ -48,6 +48,7 @@ A modular, multi-agent system for automated cybersecurity threat detection and a
 |--------|-------------|
 | `llm_client.py` | Groq API wrapper (LLaMA 3.3-70B) — single entry point for all LLM calls |
 | `faiss_store.py` | FAISS vector store for semantic similarity search |
+| `qdrant_store.py`| Qdrant vector database for persistent cross-session threat memory |
 | `nvd_client.py` | NVD REST API client for CVE vulnerability lookups |
 | `prompts.py` | Centralized prompt templates for all agents |
 
@@ -80,6 +81,7 @@ cyber-mas/
 │   ├── __init__.py
 │   ├── llm_client.py        # Groq API wrapper
 │   ├── faiss_store.py       # FAISS vector store
+│   ├── qdrant_store.py      # Qdrant persistent threat memory
 │   ├── nvd_client.py        # NVD CVE API client
 │   └── prompts.py           # Shared prompt templates
 │
@@ -205,6 +207,7 @@ Then open your browser to: [http://localhost:8000](http://localhost:8000)
 | Prompt Templates (`tools/prompts.py`) | ✅ Done |
 | NVD CVE Client (`tools/nvd_client.py`) | ✅ Done |
 | FAISS Vector Store (`tools/faiss_store.py`) | ✅ Done |
+| Qdrant Threat Memory (`tools/qdrant_store.py`) | ✅ Done |
 | Dispatcher (`agents/dispatcher.py`) | ✅ Done |
 | Email Agent (`agents/email_agent.py`) | ✅ Done |
 | Log Agent (`agents/log_agent.py`) | ✅ Done |
@@ -220,7 +223,8 @@ Then open your browser to: [http://localhost:8000](http://localhost:8000)
 
 - **Language:** Python 3.10+
 - **LLM Provider:** Groq (LLaMA 3.3-70B Versatile)
-- **Vector Search:** FAISS (CPU)
+- **Vector Search (In-Memory):** FAISS (CPU)
+- **Threat Memory:** Qdrant (Persistent Vector DB)
 - **Embeddings:** Sentence-Transformers
 - **DNS Analysis:** dnspython
 - **NLP:** TextBlob

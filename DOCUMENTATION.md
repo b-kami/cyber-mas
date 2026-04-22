@@ -17,6 +17,7 @@
    - 6.2 [prompts.py](#62-promptspy--prompt-templates)
    - 6.3 [nvd_client.py](#63-nvd_clientpy--vulnerability-database-client)
    - 6.4 [faiss_store.py](#64-faiss_storepy--vector-similarity-search)
+   - 6.5 [qdrant_store.py](#65-qdrant_storepy--persistent-threat-memory)
 7. [Agents Layer — Detailed Breakdown](#7-agents-layer--detailed-breakdown)
    - 7.1 [email_agent.py](#71-email_agentpy--email-verification-agent)
    - 7.2 [log_agent.py](#72-log_agentpy--log-analyzer-agent)
@@ -53,7 +54,8 @@ Each agent follows a **Retrieval-Augmented Generation (RAG)** pattern:
 |----------------|-----------------------------------------------------|
 | LLM            | LLaMA 3.3-70B via **Groq** cloud API                |
 | Embeddings     | **Sentence-Transformers** (all-MiniLM-L6-v2)        |
-| Vector Search  | **FAISS** (Facebook AI Similarity Search)            |
+| Vector Search  | **FAISS** (In-Memory Similarity Search)             |
+| Threat Memory  | **Qdrant** (Persistent Vector Database)             |
 | Network Scan   | **python-nmap** (wrapper around Nmap)                |
 | CVE Database   | **NIST NVD** REST API v2.0                           |
 | DNS Validation | **dnspython**                                        |
@@ -114,6 +116,7 @@ Each agent follows a **Retrieval-Augmented Generation (RAG)** pattern:
 │  prompts.py      → Chain-of-thought prompt templates            │
 │  nvd_client.py   → NIST NVD CVE lookups                        │
 │  faiss_store.py  → Vector similarity search                     │
+│  qdrant_store.py → Persistent threat memory                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -150,7 +153,8 @@ cyber-mas/
 │   ├── llm_client.py     # ✅ DONE — Groq API wrapper (LLaMA 3.3-70B)
 │   ├── prompts.py        # ✅ DONE — All chain-of-thought prompt templates
 │   ├── nvd_client.py     # ✅ DONE — NVD REST API client for CVE lookups
-│   └── faiss_store.py    # ✅ DONE — FAISS vector store for similarity search
+│   ├── faiss_store.py    # ✅ DONE — FAISS vector store for similarity search
+│   └── qdrant_store.py   # ✅ DONE — Qdrant vector database for threat memory
 │
 ├── data/                 # Data directories for agent inputs
 │   ├── faiss_index/      # FAISS index files (auto-generated, git-ignored content)
@@ -466,6 +470,33 @@ The project uses the [SpamAssassin public corpus](https://spamassassin.apache.or
 
 ---
 
+### 6.5 `qdrant_store.py` — Persistent Threat Memory
+
+**Status: ✅ Fully implemented and tested**
+
+**Purpose:** Provides persistent, cross-session memory by storing every completed analysis report as a vector in Qdrant. The Correlator queries this store to surface historically similar threats before making its final holistic assessment.
+
+**Public API:**
+
+```python
+def store_result(report_id: str, result: dict) -> bool:
+    """Encode and store an agent result in Qdrant."""
+
+def query_memory(free_text: str = None, k: int = 3) -> list[MemoryMatch]:
+    """Search Qdrant for historically similar threats."""
+
+def store_report(report_id: str, agent_results: list[dict], correlator_result: dict) -> None:
+    """Convenience function to store all results from a full pipeline run."""
+```
+
+**How it works:**
+1. Text Serialization: Converts structured analysis data (verdict, indicators, risk, reasoning) into a rich descriptive text block.
+2. Vectorization: Uses `sentence-transformers` (`all-MiniLM-L6-v2`, identical to FAISS) to generate a 384-dimensional vector.
+3. Storage: Upserts the vector alongside structured metadata (payload) into the `threat_memory` collection.
+4. Auto-setup: Uses `qdrant-client[local]` by default to persist data in the `qdrant_local/` folder, requiring no Docker or separate server (though compatible via `QDRANT_URL`).
+
+---
+
 ## 7. Agents Layer — Detailed Breakdown
 
 The `agents/` package contains the five specialized agents. Each agent file currently exists as a **stub** (placeholder comment only) — the logic will be implemented next.
@@ -553,12 +584,14 @@ The `agents/` package contains the five specialized agents. Each agent file curr
 1. Receive JSON output from one or more agents (email, log, ip)
 2. Compute weighted base risk score
 3. Apply 6 correlation rules and boost score for each match
-4. Derive verdict from final score (critical/high/medium/low)
-5. Build prompt using `correlator_system_prompt()` + `correlator_user_prompt()`
-6. Send to LLM via `llm_client.ask()` for holistic assessment
-7. Return unified result with correlations, recommendations, and agent summary
+4. Query Qdrant (`qdrant_store.query_memory`) for historically similar threats and boost score if matches are found.
+5. Derive verdict from final score (critical/high/medium/low)
+6. Build prompt using `correlator_system_prompt()` + `correlator_user_prompt()` (injecting memory context)
+7. Send to LLM via `llm_client.ask()` for holistic assessment
+8. Store the final report into Qdrant (`qdrant_store.store_report`)
+9. Return unified result with correlations, memory matches, recommendations, and agent summary
 
-**Tools it uses:** `llm_client`, `prompts`
+**Tools it uses:** `llm_client`, `prompts`, `qdrant_store`
 
 ---
 
@@ -785,6 +818,7 @@ print('All dependencies OK')
 | **Prompt Templates**   | `tools/prompts.py`     | ✅ Done & Tested     | 8 prompt functions (4 agents × 2 prompts)    |
 | **NVD Client**         | `tools/nvd_client.py`  | ✅ Done & Tested     | CVE lookup, CVSS parsing, rate-limit aware   |
 | **FAISS Store**        | `tools/faiss_store.py` | ✅ Done & Tested     | Vector index: build from corpus + query API  |
+| **Qdrant Store**       | `tools/qdrant_store.py`| ✅ Done & Tested     | Persistent threat memory vector database     |
 | **Dispatcher**         | `agents/dispatcher.py` | ✅ Done & Tested     | Auto-detect payload type + route to agent    |
 | **Email Corpus**       | `data/raw_emails/`     | ✅ Downloaded        | SpamAssassin corpus (~3000 emails)           |
 | **Email Agent**        | `agents/email_agent.py`| ✅ Done & Tested     | Phishing detection pipeline                  |

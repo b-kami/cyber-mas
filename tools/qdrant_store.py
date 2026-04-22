@@ -469,13 +469,14 @@ def query_memory(
                 )]
             )
 
-        hits = client.search(
+        response = client.query_points(
             collection_name=COLLECTION,
-            query_vector=vector,
+            query=vector,
             limit=k,
             query_filter=search_filter,
             with_payload=True,
         )
+        hits = response.points
 
         results = []
         for hit in hits:
@@ -559,9 +560,9 @@ def clear_memory() -> bool:
 if __name__ == "__main__":
     import json
 
-    print("\n" + "═"*60)
+    print("\n" + "="*60)
     print("  Qdrant Store — smoke-test")
-    print("═"*60 + "\n")
+    print("="*60 + "\n")
 
     # 1. Stats before
     print("  [1] Collection stats (before):")
@@ -608,7 +609,7 @@ if __name__ == "__main__":
     rid = "smoke-test-001"
     for r in MOCK_RESULTS:
         ok = store_result(rid, r)
-        print(f"     {r['agent']:12s} → {'OK' if ok else 'FAIL'}")
+        print(f"     {r['agent']:12s} -> {'OK' if ok else 'FAIL'}")
 
     # 3. Stats after
     print("\n  [3] Collection stats (after):")
