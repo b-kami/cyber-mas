@@ -126,14 +126,14 @@ cyber-mas/
 ├── README.md             # Project overview (high-level)
 ├── DOCUMENTATION.md      # This file — detailed technical documentation
 ├── requirements.txt      # Python dependencies
-├── main.py               # CLI entry point (not yet implemented)
+├── main.py               # ✅ DONE — Rich CLI entry point (all agents + correlator)
 │
 ├── agents/               # Specialized AI agents
 │   ├── __init__.py       # Package marker
 │   ├── email_agent.py    # ✅ DONE — Email phishing detection agent
 │   ├── log_agent.py      # ✅ DONE — System/network log analyzer agent
 │   ├── ip_agent.py       # ✅ DONE — IP range/vulnerability scanner agent
-│   ├── correlator.py     # Cross-domain signal correlator (stub)
+│   ├── correlator.py     # ✅ DONE — Cross-domain signal correlator
 │   └── dispatcher.py     # ✅ DONE — Task router with auto-detection logic
 │
 ├── tools/                # Shared utilities used by agents
@@ -521,20 +521,74 @@ The `agents/` package contains the five specialized agents. Each agent file curr
 
 ### 7.4 `correlator.py` — Cross-Domain Correlator
 
-**Status: 🔲 Stub (not yet implemented)**
+**Status: ✅ Fully implemented and tested**
 
-**Planned Purpose:** A "meta-agent" that receives the structured JSON reports from all three agents and looks for **cross-domain attack patterns** — indicators that suggest a coordinated, multi-vector attack.
+**Purpose:** A "meta-agent" that receives the structured JSON reports from all three agents and looks for **cross-domain attack patterns** — indicators that suggest a coordinated, multi-vector attack.
 
-**Planned Pipeline:**
-1. Receive the JSON output from email_agent, log_agent, and ip_agent
-2. Build the prompt using `correlator_system_prompt()` + `correlator_user_prompt()`
-3. Send to LLM via `llm_client.ask()`
-4. The LLM identifies shared entities (IPs, domains), temporal correlations, and likely attack chains
-5. Return a unified threat assessment with an overall risk score
+**Correlation Rules:**
+| Rule | Description |
+|------|-------------|
+| `C1 shared_ip` | Same IP appears in log AND ip agent results |
+| `C2 phishing_and_breach` | Email verdict = phishing AND log verdict = malicious |
+| `C3 vuln_and_exploit` | IP has open CVEs AND log shows exploitation patterns |
+| `C4 multi_vector` | All 3 agents return `risk_score > 0.6` |
+| `C5 c2_beacon_and_ip` | Log hits `malware_c2` signature AND ip agent ran |
+| `C6 recon_pattern` | `port_scan` in log signatures AND ip agent found many ports |
 
-**Example correlation:** If a phishing email contains a URL pointing to `10.0.0.5`, and the log agent detected brute-force SSH from `10.0.0.5`, and the IP agent found that `10.0.0.5` has a critical CVE — the correlator identifies this as a coordinated **phishing → credential theft → exploitation** chain.
+**Unified Risk Score:** Weighted average of agent scores + `+0.08` boost per correlation rule fired (capped at 1.0)
 
-**Tools it will use:** `llm_client`, `prompts`
+**Pipeline:**
+1. Receive JSON output from one or more agents (email, log, ip)
+2. Compute weighted base risk score
+3. Apply 6 correlation rules and boost score for each match
+4. Derive verdict from final score (critical/high/medium/low)
+5. Build prompt using `correlator_system_prompt()` + `correlator_user_prompt()`
+6. Send to LLM via `llm_client.ask()` for holistic assessment
+7. Return unified result with correlations, recommendations, and agent summary
+
+**Tools it uses:** `llm_client`, `prompts`
+
+---
+
+### 7.6 `main.py` — CLI Entry Point
+
+**Status: ✅ Fully implemented and tested**
+
+**Purpose:** The user-facing command-line interface that orchestrates all agents and presents rich, formatted output.
+
+**Key Features:**
+- Accepts file paths (`--email`, `--log`, `--ip`) or inline text (`--email-text`, `--log-text`, `--ip-text`)
+- Runs any combination of agents in a single command
+- Automatically passes results to the correlator (disable with `--no-correlate`)
+- Saves full JSON report with `--output report.json`
+- Minimal mode with `--quiet`
+- Built-in environment health check with `--check`
+- FAISS index builder with `--build-index`
+- Rich terminal output with colored panels, risk bars, and tables (falls back gracefully if `rich` unavailable)
+
+**Example commands:**
+```bash
+# Full pipeline — all three agents + correlator
+python main.py --email email.eml --log auth.log --ip 192.168.1.1
+
+# Single-agent runs
+python main.py --email suspicious.eml
+python main.py --log syslog.txt
+python main.py --ip scanme.nmap.org
+
+# Inline text (no files needed)
+python main.py --email-text "From: evil@hacker.com\nSubject: Urgent!"
+python main.py --ip-text "203.0.113.42"
+
+# Save report to JSON
+python main.py --email email.eml --output report.json
+
+# Environment health check
+python main.py --check
+
+# Build FAISS index
+python main.py --build-index
+```
 
 ---
 
@@ -698,16 +752,16 @@ print('All dependencies OK')
 | **Email Agent**        | `agents/email_agent.py`| ✅ Done & Tested     | Phishing detection pipeline                  |
 | **Log Agent**          | `agents/log_agent.py`  | ✅ Done & Tested     | Log anomaly & intrusion detection pipeline   |
 | **IP Agent**           | `agents/ip_agent.py`   | ✅ Done & Tested     | Network vulnerability scanner pipeline       |
-| **Correlator**         | `agents/correlator.py` | 🔲 Stub             | Cross-domain attack pattern detection        |
-| **CLI Entry Point**    | `main.py`              | 🔲 Stub             | User-facing command-line interface           |
+| **Correlator**         | `agents/correlator.py` | ✅ Done & Tested     | Cross-domain attack pattern detection + unified risk |
+| **CLI Entry Point**    | `main.py`              | ✅ Done & Tested     | Rich CLI: all agents, correlator, JSON output |
 | **Environment**        | `.env` / `.env.example`| ✅ Done              | API key configuration                        |
 | **Dependencies**       | `requirements.txt`     | ✅ Done              | All 12 packages listed and installable       |
 | **Git Config**         | `.gitignore`           | ✅ Done              | Secrets and generated files excluded         |
 
 ### What's Done
 
-The entire shared **tools layer** and the **dispatcher** are built:
-- **LLM communication** is working end-to-end with Groq (LLaMA 3.3-70B)
+The **entire system is now fully implemented** end-to-end:
+- **LLM communication** is working with Groq (LLaMA 3.3-70B)
 - **Prompt engineering** is complete for all 4 agents with chain-of-thought reasoning
 - **CVE vulnerability lookups** are working against the live NVD API
 - **FAISS vector store** is implemented — corpus loading, embedding, indexing, and querying
@@ -716,14 +770,14 @@ The entire shared **tools layer** and the **dispatcher** are built:
 - **Email Agent** is fully implemented with DNS, FAISS RAG, and NLP sentiment analysis
 - **Log Agent** is fully implemented with pandas log parsing and regex threat signatures
 - **IP Agent** is fully implemented with Nmap port/service scanning and NVD CVE enrichment
+- **Correlator** is fully implemented with 6 correlation rules and weighted risk scoring
+- **main.py CLI** is fully implemented with Rich output, JSON export, and all agent orchestration
 
-### What's Next (Agent Implementations)
+### Remaining Steps
 
-The final orchestrators are the next steps:
-1. Build the FAISS index: `python tools/faiss_store.py --build` (Required for Email Agent RAG)
-2. Implement `correlator.py` (cross-domain correlation)
-3. Implement `main.py` (CLI interface)
+1. **Build the FAISS index** (one-time setup): `python main.py --build-index`
+2. **Run the full pipeline**: `python main.py --email email.eml --log auth.log --ip 192.168.1.1`
 
 ---
 
-*Last updated: April 16, 2026 — v2 (faiss_store + dispatcher + corpus)*
+*Last updated: April 22, 2026 — v3 (all agents + correlator + CLI complete)*

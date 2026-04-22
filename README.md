@@ -2,6 +2,8 @@
 
 A modular, multi-agent system for automated cybersecurity threat detection and analysis. Built with pure Python, powered by **Groq LLaMA 3.3-70B**, and designed for real-world security workflows.
 
+> **Status: 🟢 Fully implemented** — All agents, the correlator, and the CLI are complete.
+
 ---
 
 ## 🏗️ Architecture
@@ -33,7 +35,7 @@ A modular, multi-agent system for automated cybersecurity threat detection and a
 | **Email Agent** | Analyzes emails for phishing, spoofing, and social engineering | FAISS vector search, RegEx, DNS (MX/SPF), RAG + LLM |
 | **Log Agent** | Parses and analyzes system/network logs for anomalies | Pandas, regex signatures, LLM chain-of-thought |
 | **IP Agent** | Scans IP ranges and identifies vulnerabilities | python-nmap, NVD API (CVE lookup), LLM |
-| **Correlator** | Cross-analyzes outputs from all agents to find attack patterns | LLM synthesis |
+| **Correlator** | Cross-analyzes all agent outputs, fires 6 correlation rules, computes unified risk | LLM synthesis, weighted scoring |
 
 ### Shared Tools
 
@@ -134,10 +136,34 @@ cd ../..
 python tools/llm_client.py
 ```
 
-### 7. Run the system
+### 7. Build the FAISS index (one-time)
+
+Required for the Email Agent's RAG similarity search:
 
 ```bash
-python main.py
+python main.py --build-index
+```
+
+### 8. Run the system
+
+```bash
+# Full pipeline — email + log + IP + correlator
+python main.py --email path/to/email.eml --log path/to/auth.log --ip 192.168.1.1
+
+# Single-agent runs
+python main.py --email suspicious.eml
+python main.py --log syslog.txt
+python main.py --ip scanme.nmap.org
+
+# Inline text (no files needed)
+python main.py --email-text "From: evil@hacker.com\nSubject: Urgent action required!"
+python main.py --ip-text "203.0.113.42"
+
+# Save full JSON report
+python main.py --email email.eml --log auth.log --output report.json
+
+# Environment health check
+python main.py --check
 ```
 
 ---
@@ -148,6 +174,23 @@ python main.py
 |-----|--------|----------|
 | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) | ✅ Yes |
 | `NVD_API_KEY` | [nvd.nist.gov](https://nvd.nist.gov/developers/request-an-api-key) | ✅ Yes (for IP Agent CVE lookups) |
+
+---
+
+## ✅ Implementation Status
+
+| Component | Status |
+|-----------|--------|
+| LLM Client (`tools/llm_client.py`) | ✅ Done |
+| Prompt Templates (`tools/prompts.py`) | ✅ Done |
+| NVD CVE Client (`tools/nvd_client.py`) | ✅ Done |
+| FAISS Vector Store (`tools/faiss_store.py`) | ✅ Done |
+| Dispatcher (`agents/dispatcher.py`) | ✅ Done |
+| Email Agent (`agents/email_agent.py`) | ✅ Done |
+| Log Agent (`agents/log_agent.py`) | ✅ Done |
+| IP Agent (`agents/ip_agent.py`) | ✅ Done |
+| Correlator (`agents/correlator.py`) | ✅ Done |
+| CLI Entry Point (`main.py`) | ✅ Done |
 
 ---
 
