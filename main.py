@@ -1,5 +1,4 @@
-# main.py — CLI entry point for the cyber_mas multi-agent system
-a"""
+"""
 main.py
 ══════════════════════════════════════════════════════════════════════════════
 Cyber-MAS  —  Multi-Agent Cybersecurity Threat Detection System

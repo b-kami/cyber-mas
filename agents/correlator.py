@@ -61,8 +61,16 @@ import logging
 import re
 from typing import Any
 
-from cyber_mas.tools.llm_client import ask
-from cyber_mas.tools.prompts import correlator_system_prompt, correlator_user_prompt
+import sys
+import os
+
+# Ensure project root is in sys.path so 'python agents/correlator.py' works
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from tools.llm_client import ask
+from tools.prompts import correlator_system_prompt, correlator_user_prompt
 
 log = logging.getLogger(__name__)
 
