@@ -13,3 +13,4 @@ python-nmap
 fastapi
 uvicorn[standard]
 python-multipart
+qdrant-client[local]

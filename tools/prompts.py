@@ -224,37 +224,130 @@ Respond ONLY in this exact JSON format:
 
 
 def correlator_user_prompt(
-    agent_summary: dict,
-    correlations: list[str],
-    unified_risk: float,
-    unified_indicators: list[str],
-    all_indicators: list[str],
-    email_reasoning: str,
-    log_reasoning: str,
-    ip_reasoning: str,
+    agent_summary:       dict,
+    correlations:        list,
+    unified_risk:        float,
+    unified_indicators:  list,
+    all_indicators:      list,
+    email_reasoning:     str = "",
+    log_reasoning:       str = "",
+    ip_reasoning:        str = "",
+    memory_context:      str = "",   
 ) -> str:
     """
-    User prompt for the correlator — injects pre-calculated context.
+    User prompt for the correlator agent.
+ 
+    Parameters
+    ----------
+    agent_summary       : dict with email/log/ip verdict + risk_score
+    correlations        : list of correlation rule IDs that fired
+    unified_risk        : pre-computed weighted risk score (float)
+    unified_indicators  : list of cross-agent indicator strings
+    all_indicators      : merged indicators from all agents
+    email_reasoning     : reasoning string from email agent
+    log_reasoning       : reasoning string from log agent
+    ip_reasoning        : reasoning string from ip agent
+    memory_context      : formatted string from Qdrant historical matches
     """
-    import json
-    return f"""Provide your final holistic assessment based on the following pre-calculated context.
-
-── AGENT SUMMARY ────────────────────────────────────────────────
-{json.dumps(agent_summary, indent=2)}
-
-── CROSS-DOMAIN CORRELATIONS ────────────────────────────────────
-Rules Fired: {correlations if correlations else "None"}
-Unified Risk Score: {unified_risk}
-Unified Indicators: {unified_indicators}
-All Indicators: {all_indicators}
-
-── INDIVIDUAL REASONING ────────────────────────────────────────
-Email Agent: {email_reasoning or "No data"}
-Log Agent:   {log_reasoning or "No data"}
-IP Agent:    {ip_reasoning or "No data"}
-
-Now apply your chain-of-thought reasoning and return the JSON verdict."""
-
+ 
+    # Format agent summary table
+    summary_lines = []
+    for agent, val in agent_summary.items():
+        if val:
+            summary_lines.append(
+                f"  {agent.upper():8s} | verdict={val['verdict']:12s} | risk={val['risk_score']:.2f}"
+            )
+        else:
+            summary_lines.append(
+                f"  {agent.upper():8s} | NOT ACTIVE"
+            )
+    summary_block = "\n".join(summary_lines)
+ 
+    # Format correlations
+    corr_block = "\n".join(f"  • {c}" for c in correlations) if correlations else "  None"
+ 
+    # Format indicators
+    ind_block = "\n".join(f"  • {i}" for i in unified_indicators) if unified_indicators else "  None"
+    all_ind_block = "\n".join(f"  • {i}" for i in all_indicators[:15]) if all_indicators else "  None"
+ 
+    # Format individual agent reasoning
+    reasoning_block = ""
+    if email_reasoning:
+        reasoning_block += f"EMAIL AGENT REASONING:\n{email_reasoning[:300]}\n\n"
+    if log_reasoning:
+        reasoning_block += f"LOG AGENT REASONING:\n{log_reasoning[:300]}\n\n"
+    if ip_reasoning:
+        reasoning_block += f"IP AGENT REASONING:\n{ip_reasoning[:300]}\n\n"
+ 
+    # Memory context block (only shown if Qdrant returned results)
+    memory_block = ""
+    if memory_context and memory_context.strip() and "unavailable" not in memory_context:
+        memory_block = f"""
+════════════════════════════════════════
+HISTORICAL THREAT MEMORY (from Qdrant)
+════════════════════════════════════════
+{memory_context}
+ 
+"""
+ 
+    return f"""You are the final decision-maker in a multi-agent cybersecurity system.
+Your task: synthesise the evidence below into a unified threat assessment.
+ 
+════════════════════════════════════════
+AGENT RESULTS SUMMARY
+════════════════════════════════════════
+{summary_block}
+ 
+Pre-computed unified risk score: {unified_risk:.3f}  (0=clean, 1=critical)
+ 
+════════════════════════════════════════
+CROSS-AGENT CORRELATION RULES FIRED
+════════════════════════════════════════
+{corr_block}
+ 
+════════════════════════════════════════
+CROSS-AGENT INDICATORS
+════════════════════════════════════════
+{ind_block}
+ 
+════════════════════════════════════════
+ALL INDICATORS (merged)
+════════════════════════════════════════
+{all_ind_block}
+ 
+════════════════════════════════════════
+INDIVIDUAL AGENT REASONING
+════════════════════════════════════════
+{reasoning_block.strip()}
+{memory_block}
+════════════════════════════════════════
+YOUR TASK
+════════════════════════════════════════
+Produce a JSON object with these exact fields:
+ 
+{{
+  "verdict": "critical" | "high" | "medium" | "low" | "uncertain",
+  "confidence": <float 0.0-1.0>,
+  "reasoning": "<2-4 sentences: what is happening, why it is serious, key evidence>",
+  "recommendations": [
+    "<specific, actionable step 1>",
+    "<specific, actionable step 2>",
+    "<specific, actionable step 3>",
+    "<specific, actionable step 4>"
+  ]
+}}
+ 
+Verdict guidelines:
+  critical  → unified_risk >= 0.85 OR active breach confirmed
+  high      → unified_risk >= 0.65 OR serious threat with clear evidence
+  medium    → unified_risk >= 0.40 OR suspicious activity requiring investigation
+  low       → unified_risk < 0.40 AND no strong indicators
+  uncertain → insufficient evidence to conclude
+ 
+If historical memory shows REPEATED similar attacks, escalate the verdict.
+Recommendations must be concrete and prioritised — not generic.
+Output ONLY the JSON object. No explanation outside it.
+"""
 
 # ══════════════════════════════════════════════════════════════
 # QUICK SELF-TEST
