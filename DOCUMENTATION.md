@@ -18,6 +18,7 @@
    - 6.3 [nvd_client.py](#63-nvd_clientpy--vulnerability-database-client)
    - 6.4 [faiss_store.py](#64-faiss_storepy--vector-similarity-search)
    - 6.5 [qdrant_store.py](#65-qdrant_storepy--persistent-threat-memory)
+   - 6.6 [mitre_mapper.py](#66-mitre_mapperpy--mitre-attck-mapping-engine)
 7. [Agents Layer — Detailed Breakdown](#7-agents-layer--detailed-breakdown)
    - 7.1 [email_agent.py](#71-email_agentpy--email-verification-agent)
    - 7.2 [log_agent.py](#72-log_agentpy--log-analyzer-agent)
@@ -497,6 +498,79 @@ def store_report(report_id: str, agent_results: list[dict], correlator_result: d
 
 ---
 
+### 6.6 `mitre_mapper.py` — MITRE ATT&CK Mapping Engine
+
+**Status: ✅ Fully implemented and tested**
+
+**Purpose:** Maps threat indicators, signatures, verdicts, CVEs, open ports, and email metadata from any agent result to **MITRE ATT&CK techniques and tactics**. Provides structured technique data for the dashboard, the correlator LLM prompt, and JSON report output.
+
+**Public API:**
+
+```python
+def map_result(result: dict) -> list[MitreTechnique]:
+    """Map a single agent result to MITRE ATT&CK techniques."""
+
+def map_all_results(results: list[dict]) -> list[MitreTechnique]:
+    """Map multiple agent results, deduplicating across all."""
+
+def techniques_to_prompt_block(techniques: list[MitreTechnique]) -> str:
+    """Format techniques as a block for injection into the LLM prompt."""
+
+def summary_stats(techniques: list[MitreTechnique]) -> dict:
+    """Return summary statistics (total, by_tactic, attack_chain, top_confidence)."""
+
+def get_attack_chain(techniques: list[MitreTechnique]) -> list[str]:
+    """Return ordered tactic names following the ATT&CK kill chain."""
+```
+
+**Data Model — `MitreTechnique`:**
+
+| Field | Type | Example |
+|-------|------|---------|
+| `technique_id` | str | `"T1110.001"` |
+| `technique_name` | str | `"Password Guessing"` |
+| `tactic_id` | str | `"TA0006"` |
+| `tactic_name` | str | `"Credential Access"` |
+| `description` | str | Full ATT&CK description |
+| `source` | str | What triggered the mapping (e.g. `"signature:brute_force"`) |
+| `confidence` | float | 0.0–1.0 based on source reliability |
+| `url` | str | Auto-generated ATT&CK URL |
+
+**8 Mapping Sources (in priority order):**
+
+| Source | Confidence | Example |
+|--------|------------|---------|
+| 1. Signature names | 0.95 | `brute_force` → T1110 |
+| 2. Verdict strings | 0.85 | `phishing` → T1566 |
+| 3. Indicator strings | 0.80 | `ssh_brute_force` → T1110 |
+| 4. CVE IDs | 0.95 | `CVE-2017-0144` → T1190 (EternalBlue) |
+| 5. Open port numbers | 0.75 | Port 3389 → T1021.001 (RDP) |
+| 6. Email metadata | 0.85 | `has_attachments` → T1566.001 |
+| 7. Correlation rules | 0.90 | `C2_phishing_and_breach` → T1566 |
+| 8. Free-text reasoning | 0.60 | LLM reasoning text keyword matching |
+
+**Technique Catalogue:** 35+ techniques covering all 12 ATT&CK tactics:
+- Initial Access, Execution, Persistence, Privilege Escalation, Defense Evasion, Credential Access, Discovery, Lateral Movement, Collection, Command & Control, Exfiltration, Impact
+
+**Additional Mappings:**
+- **Port → Technique map**: 20+ dangerous ports (SSH, RDP, SMB, databases, Docker API, etc.)
+- **CVE → Technique map**: Known CVEs like EternalBlue, BlueKeep, Log4Shell, PrintNightmare, Zerologon
+
+**How `map_result()` works:**
+1. Scans `signatures_hit` for keyword matches against the technique catalogue
+2. Checks the `verdict` string for known threat categories
+3. Iterates through `indicators` for fuzzy keyword matching
+4. Looks up `cves` against the known CVE→technique map (falls back to description matching)
+5. Maps `open_ports` to techniques via the port→technique map
+6. Checks `email_metadata` for attachments and links
+7. Maps `correlations` (correlation rule names) to techniques
+8. Scans `reasoning` text for low-confidence keyword matches
+9. Deduplicates by technique_id (keeping highest confidence) and sorts by tactic→technique order
+
+**Self-test:** Run `python tools/mitre_mapper.py` — maps 3 mock agent results and displays techniques, attack chain, and prompt block.
+
+---
+
 ## 7. Agents Layer — Detailed Breakdown
 
 The `agents/` package contains the five specialized agents. Each agent file currently exists as a **stub** (placeholder comment only) — the logic will be implemented next.
@@ -580,18 +654,26 @@ The `agents/` package contains the five specialized agents. Each agent file curr
 
 **Unified Risk Score:** Weighted average of agent scores + `+0.08` boost per correlation rule fired (capped at 1.0)
 
-**Pipeline:**
-1. Receive JSON output from one or more agents (email, log, ip)
-2. Compute weighted base risk score
-3. Apply 6 correlation rules and boost score for each match
-4. Query Qdrant (`qdrant_store.query_memory`) for historically similar threats and boost score if matches are found.
-5. Derive verdict from final score (critical/high/medium/low)
-6. Build prompt using `correlator_system_prompt()` + `correlator_user_prompt()` (injecting memory context)
-7. Send to LLM via `llm_client.ask()` for holistic assessment
-8. Store the final report into Qdrant (`qdrant_store.store_report`)
-9. Return unified result with correlations, memory matches, recommendations, and agent summary
+**Pipeline (11 steps):**
+1. Extract per-agent results (email, log, ip)
+2. Collect shared IPs across all agent outputs
+3. Apply 6 cross-agent correlation rules and boost score for each match
+4. Query Qdrant (`qdrant_store.query_memory`) for historically similar threats
+5. Run **MITRE ATT&CK mapping** (`mitre_mapper.map_all_results`) across all agent results
+6. Compute weighted unified risk score (base + correlation boost + memory boost)
+7. Derive pre-LLM verdict from score (critical/high/medium/low)
+8. Merge all indicators from all agents
+9. Build enriched prompt using `correlator_user_prompt()` — injecting memory context AND MITRE ATT&CK technique block
+10. Send to LLM via `llm_client.ask()` for holistic assessment
+11. Store the final report into Qdrant (`qdrant_store.store_report`) for future sessions
+12. Return unified result with correlations, memory matches, MITRE techniques, attack chain, and recommendations
 
-**Tools it uses:** `llm_client`, `prompts`, `qdrant_store`
+**Output fields (new in v5):**
+- `mitre_techniques` — list of full technique dicts (id, name, tactic, confidence, source, URL)
+- `mitre_stats` — summary stats (total, by_tactic, tactic_count, attack_chain, top_confidence)
+- `attack_chain` — ordered list of tactic names following the ATT&CK kill chain
+
+**Tools it uses:** `llm_client`, `prompts`, `qdrant_store`, `mitre_mapper`
 
 ---
 
@@ -815,21 +897,22 @@ print('All dependencies OK')
 | Component              | File                   | Status              | Description                                  |
 |------------------------|------------------------|---------------------|----------------------------------------------|
 | **LLM Client**         | `tools/llm_client.py`  | ✅ Done & Tested     | Groq API wrapper, singleton client, `ask()`  |
-| **Prompt Templates**   | `tools/prompts.py`     | ✅ Done & Tested     | 8 prompt functions (4 agents × 2 prompts)    |
+| **Prompt Templates**   | `tools/prompts.py`     | ✅ Done & Tested     | 8 prompt functions + MITRE block injection   |
 | **NVD Client**         | `tools/nvd_client.py`  | ✅ Done & Tested     | CVE lookup, CVSS parsing, rate-limit aware   |
 | **FAISS Store**        | `tools/faiss_store.py` | ✅ Done & Tested     | Vector index: build from corpus + query API  |
 | **Qdrant Store**       | `tools/qdrant_store.py`| ✅ Done & Tested     | Persistent threat memory vector database     |
+| **MITRE Mapper**       | `tools/mitre_mapper.py`| ✅ Done & Tested     | ATT&CK technique mapping (35+ techniques, 8 sources) |
 | **Dispatcher**         | `agents/dispatcher.py` | ✅ Done & Tested     | Auto-detect payload type + route to agent    |
 | **Email Corpus**       | `data/raw_emails/`     | ✅ Downloaded        | SpamAssassin corpus (~3000 emails)           |
 | **Email Agent**        | `agents/email_agent.py`| ✅ Done & Tested     | Phishing detection pipeline                  |
 | **Log Agent**          | `agents/log_agent.py`  | ✅ Done & Tested     | Log anomaly & intrusion detection pipeline   |
 | **IP Agent**           | `agents/ip_agent.py`   | ✅ Done & Tested     | Network vulnerability scanner pipeline       |
-| **Correlator**         | `agents/correlator.py` | ✅ Done & Tested     | Cross-domain attack pattern detection + unified risk |
+| **Correlator**         | `agents/correlator.py` | ✅ Done & Tested     | Cross-domain correlation + Qdrant memory + MITRE ATT&CK |
 | **CLI Entry Point**    | `main.py`              | ✅ Done & Tested     | Rich CLI: all agents, correlator, JSON output |
 | **Web Dashboard API**  | `dashboard/api.py`     | ✅ Done & Tested     | FastAPI backend with SSE streaming and MITRE ATT&CK |
 | **Web Dashboard UI**   | `static/index.html`    | ✅ Done & Tested     | Real-time visual SOC interface |
 | **Environment**        | `.env` / `.env.example`| ✅ Done              | API key configuration                        |
-| **Dependencies**       | `requirements.txt`     | ✅ Done              | All 12 packages listed and installable       |
+| **Dependencies**       | `requirements.txt`     | ✅ Done              | All 16 packages listed and installable       |
 | **Git Config**         | `.gitignore`           | ✅ Done              | Secrets and generated files excluded         |
 
 ### What's Done
@@ -844,11 +927,13 @@ The **entire system is now fully implemented** end-to-end:
 - **Email Agent** is fully implemented with DNS, FAISS RAG, and NLP sentiment analysis
 - **Log Agent** is fully implemented with pandas log parsing and regex threat signatures
 - **IP Agent** is fully implemented with Nmap port/service scanning and NVD CVE enrichment
-- **Correlator** is fully implemented with 6 correlation rules and weighted risk scoring
+- **Correlator** is fully implemented with 6 correlation rules, weighted risk scoring, Qdrant memory, and MITRE ATT&CK mapping
+- **MITRE ATT&CK Mapper** maps all findings to 35+ techniques across 12 tactics using 8 different sources (signatures, verdicts, indicators, CVEs, ports, email metadata, correlations, reasoning)
+- **Qdrant Threat Memory** persists every analysis and surfaces historically similar threats for improved LLM context
 - **main.py CLI** is fully implemented with Rich output, JSON export, and all agent orchestration
 - **Web Dashboard** is fully implemented with FastAPI, SSE real-time streaming, MITRE mapping, and a visual UI
 
-### Remaining Steps
+### Getting Started
 
 1. **Build the FAISS index** (one-time setup): `python main.py --build-index`
 2. **Run the full pipeline (CLI)**: `python main.py --email email.eml --log auth.log --ip 192.168.1.1`
@@ -856,4 +941,4 @@ The **entire system is now fully implemented** end-to-end:
 
 ---
 
-*Last updated: April 22, 2026 — v4 (Dashboard UI added)*
+*Last updated: April 24, 2026 — v5 (MITRE ATT&CK integration + Qdrant memory updates)*

@@ -1,56 +1,86 @@
-# 🛡️ Cyber MAS — Multi-Agent Cybersecurity System
+# 🛡️ Cyber-MAS — Multi-Agent Cybersecurity Threat Detection System
 
-A modular, multi-agent system for automated cybersecurity threat detection and analysis. Built with pure Python, powered by **Groq LLaMA 3.3-70B**, and designed for real-world security workflows.
+A modular, multi-agent system for automated cybersecurity threat detection and analysis. Built with pure Python, powered by **Groq LLaMA 3.3-70B**, with **MITRE ATT&CK mapping**, **persistent threat memory (Qdrant)**, and a real-time **SOC dashboard**.
 
-> **Status: 🟢 Fully implemented** — All agents, the correlator, and the CLI are complete.
+> **Status: 🟢 Fully implemented** — All agents, the correlator, MITRE ATT&CK integration, Qdrant memory, CLI, and the web dashboard are complete.
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                 dashboard/api.py                    │
-│            (FastAPI Web UI + SSE Stream)            │
-└────────────────────────┬────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────┐
-│                     main.py (CLI)                    │
-│                         │                            │
-│                   ┌─────▼─────┐                      │
-│                   │ Dispatcher │                      │
-│                   └─────┬─────┘                      │
-│           ┌─────────────┼─────────────┐              │
-│     ┌─────▼─────┐ ┌─────▼─────┐ ┌────▼──────┐       │
-│     │   Email   │ │    Log    │ │    IP     │       │
-│     │   Agent   │ │   Agent   │ │   Agent   │       │
-│     └─────┬─────┘ └─────┬─────┘ └────┬──────┘       │
-│           └─────────────┼─────────────┘              │
-│                   ┌─────▼──────┐                     │
-│                   │ Correlator │                      │
-│                   └────────────┘                     │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         USER / CLIENT                           │
+│           main.py (CLI)  ·  dashboard/api.py (Web UI)           │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       DISPATCHER                                │
+│                   (agents/dispatcher.py)                         │
+│          Auto-detects payload type & routes to agent             │
+└──────┬──────────────────┬──────────────────┬────────────────────┘
+       │                  │                  │
+       ▼                  ▼                  ▼
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│ EMAIL AGENT  │   │  LOG AGENT   │   │   IP AGENT   │
+│              │   │              │   │              │
+│ • DNS/MX     │   │ • Pandas     │   │ • Nmap scan  │
+│ • FAISS RAG  │   │ • Regex sigs │   │ • NVD CVEs   │
+│ • TextBlob   │   │ • Suricata   │   │ • OS detect  │
+│ • LLM assess │   │ • LLM reason │   │ • LLM assess │
+└──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+       │                  │                  │
+       └──────────────────┼──────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       CORRELATOR                                │
+│                   (agents/correlator.py)                         │
+│                                                                 │
+│  1. Fires 6 cross-agent correlation rules                       │
+│  2. Queries Qdrant for historical similar threats               │
+│  3. Maps all findings to MITRE ATT&CK techniques               │
+│  4. Computes unified risk score (weighted + boosts)             │
+│  5. Sends enriched prompt to LLM for final assessment           │
+│  6. Stores results in Qdrant for future sessions                │
+└─────────────────────────────────────────────────────────────────┘
+                          │
+             Shared Tools │
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        TOOLS LAYER                              │
+│                                                                 │
+│  llm_client.py    → Groq API wrapper (LLaMA 3.3-70B)           │
+│  prompts.py       → Chain-of-thought prompt templates           │
+│  faiss_store.py   → FAISS vector search (email RAG)             │
+│  qdrant_store.py  → Persistent threat memory (cross-session)    │
+│  mitre_mapper.py  → MITRE ATT&CK technique mapping engine      │
+│  nvd_client.py    → NIST NVD CVE lookups                       │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Agents
+---
 
-| Agent | Purpose | Tools Used |
-|-------|---------|------------|
-| **Dispatcher** | Routes incoming tasks to the appropriate specialist agent | Rule-based routing |
-| **Email Agent** | Analyzes emails for phishing, spoofing, and social engineering | FAISS vector search, RegEx, DNS (MX/SPF), RAG + LLM |
-| **Log Agent** | Parses and analyzes system/network logs for anomalies | Pandas, regex signatures, LLM chain-of-thought |
-| **IP Agent** | Scans IP ranges and identifies vulnerabilities | python-nmap, NVD API (CVE lookup), LLM |
-| **Correlator** | Cross-analyzes all agent outputs, fires 6 correlation rules, computes unified risk | LLM synthesis, weighted scoring |
+## 🤖 Agents
 
-### Shared Tools
+| Agent | Purpose | Key Tools |
+|-------|---------|-----------|
+| **Dispatcher** | Auto-detects payload type (email/log/IP) and routes to the correct agent | Rule-based routing, regex detection |
+| **Email Agent** | Detects phishing, spoofing, and social engineering in emails | FAISS RAG, DNS (MX/SPF), TextBlob, tldextract, LLM |
+| **Log Agent** | Identifies intrusions, brute-force, and anomalies in system/network logs | Pandas, regex signatures, Suricata, LLM |
+| **IP Agent** | Scans IP ranges for open ports, services, and known vulnerabilities | python-nmap, NVD CVE API, LLM |
+| **Correlator** | Cross-references all agent outputs, detects multi-vector attacks, produces a unified threat assessment | 6 correlation rules, Qdrant memory, MITRE ATT&CK mapper, LLM synthesis |
+
+## 🔧 Shared Tools
 
 | Module | Description |
 |--------|-------------|
-| `llm_client.py` | Groq API wrapper (LLaMA 3.3-70B) — single entry point for all LLM calls |
-| `faiss_store.py` | FAISS vector store for semantic similarity search |
-| `qdrant_store.py`| Qdrant vector database for persistent cross-session threat memory |
-| `nvd_client.py` | NVD REST API client for CVE vulnerability lookups |
-| `prompts.py` | Centralized prompt templates for all agents |
+| `llm_client.py` | Central Groq API wrapper — single `ask()` function for all LLM calls |
+| `prompts.py` | Chain-of-thought prompt templates for all 4 agents (system + user prompts) |
+| `faiss_store.py` | FAISS vector store for semantic email similarity search (RAG) |
+| `qdrant_store.py` | Qdrant vector database for persistent cross-session threat memory |
+| `mitre_mapper.py` | Maps signatures, verdicts, CVEs, ports, and indicators to MITRE ATT&CK techniques |
+| `nvd_client.py` | NIST NVD REST API v2.0 client for CVE vulnerability lookups |
 
 ---
 
@@ -58,36 +88,38 @@ A modular, multi-agent system for automated cybersecurity threat detection and a
 
 ```
 cyber-mas/
-├── main.py                  # CLI entry point
-├── requirements.txt         # Python dependencies
+├── main.py                  # CLI entry point — runs agents + correlator
+├── requirements.txt         # Python dependencies (16 packages)
 ├── .env.example             # API key template
-├── .gitignore
-├── README.md
+├── .gitignore               # Secrets & generated files excluded
+├── README.md                # This file
+├── DOCUMENTATION.md         # Comprehensive technical documentation
 │
-├── dashboard/
-│   ├── api.py               # FastAPI backend
+├── dashboard/               # Web UI (SOC Dashboard)
+│   ├── api.py               # FastAPI backend with SSE streaming
 │   └── static/
-│       └── index.html       # Web UI dashboard
+│       └── index.html       # Real-time SOC dashboard (HTML/CSS/JS)
 │
-├── agents/
+├── agents/                  # Specialized AI agents
 │   ├── __init__.py
-│   ├── dispatcher.py        # Task routing logic
-│   ├── email_agent.py       # Email threat analysis
-│   ├── log_agent.py         # Log anomaly detection
+│   ├── dispatcher.py        # Task router with auto-detection
+│   ├── email_agent.py       # Email phishing detection
+│   ├── log_agent.py         # Log anomaly & intrusion detection
 │   ├── ip_agent.py          # IP/CVE vulnerability scanning
 │   └── correlator.py        # Cross-agent threat correlation
 │
-├── tools/
+├── tools/                   # Shared utilities
 │   ├── __init__.py
 │   ├── llm_client.py        # Groq API wrapper
+│   ├── prompts.py           # All prompt templates
 │   ├── faiss_store.py       # FAISS vector store
-│   ├── qdrant_store.py      # Qdrant persistent threat memory
-│   ├── nvd_client.py        # NVD CVE API client
-│   └── prompts.py           # Shared prompt templates
+│   ├── qdrant_store.py      # Qdrant persistent memory
+│   ├── mitre_mapper.py      # MITRE ATT&CK mapping engine
+│   └── nvd_client.py        # NVD CVE API client
 │
 └── data/
-    ├── raw_emails/           # Raw email samples (.eml, .txt)
-    ├── faiss_index/          # Persisted FAISS index files
+    ├── raw_emails/           # SpamAssassin corpus (spam + ham)
+    ├── faiss_index/          # Auto-generated FAISS index files
     └── sample_logs/          # Sample log files for analysis
 ```
 
@@ -95,43 +127,35 @@ cyber-mas/
 
 ## 🚀 Quick Start
 
-### 1. Clone the repository
+### 1. Clone & setup
 
 ```bash
 git clone https://github.com/b-kami/cyber-mas.git
 cd cyber-mas
-```
-
-### 2. Create a virtual environment
-
-```bash
 python -m venv venv
+
 # Windows
 venv\Scripts\activate
 # Linux/macOS
 source venv/bin/activate
-```
 
-### 3. Install dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure API keys
+### 2. Configure API keys
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and add your keys:
+Edit `.env`:
 
 ```env
-GROQ_API_KEY=gsk_...        # https://console.groq.com
-NVD_API_KEY=xxxxxxxx...     # https://nvd.nist.gov/developers/request-an-api-key
+GROQ_API_KEY=gsk_...        # Required — https://console.groq.com
+NVD_API_KEY=xxxxxxxx...     # Optional — https://nvd.nist.gov/developers/request-an-api-key
 ```
 
-### 5. Download the SpamAssassin Corpus (for Email Agent)
+### 3. Download the SpamAssassin corpus (for Email Agent RAG)
 
 ```bash
 cd data/raw_emails/
@@ -142,24 +166,23 @@ tar -xjf 20030228_easy_ham.tar.bz2
 cd ../..
 ```
 
-### 6. Verify the LLM connection
-
-```bash
-python tools/llm_client.py
-```
-
-### 7. Build the FAISS index (one-time)
-
-Required for the Email Agent's RAG similarity search:
+### 4. Build the FAISS index (one-time)
 
 ```bash
 python main.py --build-index
 ```
 
-### 8. Run the system
+### 5. Verify setup
 
 ```bash
-# Full pipeline — email + log + IP + correlator
+python main.py --check        # Environment health check
+python tools/llm_client.py    # Test Groq LLM connection
+```
+
+### 6. Run analyses
+
+```bash
+# Full pipeline — all 3 agents + correlator
 python main.py --email path/to/email.eml --log path/to/auth.log --ip 192.168.1.1
 
 # Single-agent runs
@@ -171,22 +194,66 @@ python main.py --ip scanme.nmap.org
 python main.py --email-text "From: evil@hacker.com\nSubject: Urgent action required!"
 python main.py --ip-text "203.0.113.42"
 
-# Save full JSON report
+# Save JSON report
 python main.py --email email.eml --log auth.log --output report.json
 
-# Environment health check
-python main.py --check
+# Raw JSON output (for piping)
+python main.py --email email.eml --json
+
+# Skip correlator
+python main.py --email email.eml --no-correlate
 ```
 
-### 9. Run the Web Dashboard
-
-Start the real-time SOC dashboard UI:
+### 7. Run the Web Dashboard
 
 ```bash
 uvicorn dashboard.api:app --reload --port 8000
 ```
 
-Then open your browser to: [http://localhost:8000](http://localhost:8000)
+Open [http://localhost:8000](http://localhost:8000) in your browser.
+
+---
+
+## 🗺️ MITRE ATT&CK Integration
+
+The system automatically maps all detected threats to the **MITRE ATT&CK** framework:
+
+- **35+ techniques** across **12 tactics** in the mapping catalogue
+- **8 mapping sources**: signatures, verdicts, indicators, CVE IDs, open ports, email metadata, correlation rules, and free-text reasoning
+- **Confidence scoring**: each mapping carries a confidence level (0.0–1.0) based on the source
+- **Attack chain reconstruction**: tactics are ordered by the ATT&CK kill chain to show the attack lifecycle
+- **LLM-enhanced**: technique context is injected into the correlator's LLM prompt for better recommendations
+
+The dashboard displays MITRE techniques for each agent result and the correlator's unified attack chain.
+
+---
+
+## 🧠 Persistent Threat Memory (Qdrant)
+
+The system maintains cross-session memory using **Qdrant** vector database:
+
+- Every analysis result is encoded (sentence-transformers) and stored as a vector with structured metadata
+- Before making its final assessment, the correlator queries Qdrant for historically similar threats
+- Historical matches are injected into the LLM prompt (so the model can consider past attack patterns)
+- Strong historical matches with high-risk verdicts provide a small confidence boost to the unified risk score
+- **Zero-config**: runs in-process with local storage by default (`qdrant_local/`), or connects to a Docker/remote instance via `QDRANT_URL`
+
+---
+
+## 🔗 Correlation Rules
+
+The correlator fires 6 cross-agent rules to detect multi-vector attacks:
+
+| Rule | Name | Trigger Condition |
+|------|------|-------------------|
+| C1 | `shared_ip` | Same IP appears in both log sources and IP agent target |
+| C2 | `phishing_and_breach` | Email verdict = phishing AND log verdict = malicious |
+| C3 | `vuln_and_exploit` | IP has known CVEs AND log shows exploitation patterns |
+| C4 | `multi_vector` | All active agents report risk_score > 0.6 |
+| C5 | `c2_beacon_and_ip` | Log hits `malware_c2` signature AND IP agent ran |
+| C6 | `recon_pattern` | `port_scan` in log AND IP agent found ≥5 open ports |
+
+Each fired rule boosts the unified risk score by `+0.08`.
 
 ---
 
@@ -195,54 +262,66 @@ Then open your browser to: [http://localhost:8000](http://localhost:8000)
 | Key | Source | Required |
 |-----|--------|----------|
 | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) | ✅ Yes |
-| `NVD_API_KEY` | [nvd.nist.gov](https://nvd.nist.gov/developers/request-an-api-key) | ✅ Yes (for IP Agent CVE lookups) |
+| `NVD_API_KEY` | [nvd.nist.gov](https://nvd.nist.gov/developers/request-an-api-key) | Optional (raises rate limit from 5→50 req/30s) |
+| `QDRANT_URL` | Your Qdrant instance | Optional (defaults to local in-process storage) |
 
 ---
 
 ## ✅ Implementation Status
 
-| Component | Status |
-|-----------|--------|
-| LLM Client (`tools/llm_client.py`) | ✅ Done |
-| Prompt Templates (`tools/prompts.py`) | ✅ Done |
-| NVD CVE Client (`tools/nvd_client.py`) | ✅ Done |
-| FAISS Vector Store (`tools/faiss_store.py`) | ✅ Done |
-| Qdrant Threat Memory (`tools/qdrant_store.py`) | ✅ Done |
-| Dispatcher (`agents/dispatcher.py`) | ✅ Done |
-| Email Agent (`agents/email_agent.py`) | ✅ Done |
-| Log Agent (`agents/log_agent.py`) | ✅ Done |
-| IP Agent (`agents/ip_agent.py`) | ✅ Done |
-| Correlator (`agents/correlator.py`) | ✅ Done |
-| CLI Entry Point (`main.py`) | ✅ Done |
-| Web UI API (`dashboard/api.py`) | ✅ Done |
-| Web UI Frontend (`dashboard/static/index.html`) | ✅ Done |
+| Component | File | Status |
+|-----------|------|--------|
+| LLM Client | `tools/llm_client.py` | ✅ Done |
+| Prompt Templates | `tools/prompts.py` | ✅ Done |
+| NVD CVE Client | `tools/nvd_client.py` | ✅ Done |
+| FAISS Vector Store | `tools/faiss_store.py` | ✅ Done |
+| Qdrant Threat Memory | `tools/qdrant_store.py` | ✅ Done |
+| MITRE ATT&CK Mapper | `tools/mitre_mapper.py` | ✅ Done |
+| Dispatcher | `agents/dispatcher.py` | ✅ Done |
+| Email Agent | `agents/email_agent.py` | ✅ Done |
+| Log Agent | `agents/log_agent.py` | ✅ Done |
+| IP Agent | `agents/ip_agent.py` | ✅ Done |
+| Correlator | `agents/correlator.py` | ✅ Done |
+| CLI Entry Point | `main.py` | ✅ Done |
+| Web Dashboard API | `dashboard/api.py` | ✅ Done |
+| Web Dashboard UI | `dashboard/static/index.html` | ✅ Done |
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Language:** Python 3.10+
-- **LLM Provider:** Groq (LLaMA 3.3-70B Versatile)
-- **Vector Search (In-Memory):** FAISS (CPU)
-- **Threat Memory:** Qdrant (Persistent Vector DB)
-- **Embeddings:** Sentence-Transformers
-- **DNS Analysis:** dnspython
-- **NLP:** TextBlob
-- **Data Processing:** Pandas
-- **CLI Output:** Rich
-- **Validation:** Pydantic
-- **Network Scanning:** python-nmap
-- **CVE Database:** NVD REST API
-- **Web Dashboard:** FastAPI, Uvicorn, Vanilla JS/HTML/CSS, SSE (Server-Sent Events)
+| Layer | Technology |
+|-------|------------|
+| **LLM** | LLaMA 3.3-70B via **Groq** cloud API |
+| **Embeddings** | **Sentence-Transformers** (all-MiniLM-L6-v2, 384-dim) |
+| **Vector Search (RAG)** | **FAISS** (CPU, IndexFlatL2) |
+| **Threat Memory** | **Qdrant** (persistent vector database) |
+| **Threat Framework** | **MITRE ATT&CK** (35+ techniques, 12 tactics) |
+| **Network Scanning** | **python-nmap** (Nmap wrapper) |
+| **CVE Database** | **NIST NVD** REST API v2.0 |
+| **DNS Validation** | **dnspython** (MX, A, TXT records) |
+| **NLP / Sentiment** | **TextBlob** |
+| **URL Parsing** | **tldextract** |
+| **Data Processing** | **Pandas** |
+| **HTTP Client** | **requests** |
+| **Config** | **python-dotenv** |
+| **Validation** | **Pydantic** |
+| **CLI Output** | **Rich** (tables, panels, progress bars) |
+| **Web Backend** | **FastAPI** + **Uvicorn** |
+| **Web Frontend** | **HTML/CSS/JS** with Server-Sent Events (SSE) |
 
 ---
 
 ## 📝 License
 
-This project is developed as part of a PFE (Projet de Fin d'Études).
+This project is developed as part of a **PFE** (Projet de Fin d'Études).
 
 ---
 
 ## 👤 Author
 
 **b-kami** — [github.com/b-kami](https://github.com/b-kami)
+
+---
+
+*Last updated: April 24, 2026 — v5 (MITRE ATT&CK integration + Qdrant memory)*
