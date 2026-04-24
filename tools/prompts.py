@@ -232,7 +232,8 @@ def correlator_user_prompt(
     email_reasoning:     str = "",
     log_reasoning:       str = "",
     ip_reasoning:        str = "",
-    memory_context:      str = "",   
+    memory_context:      str = "",
+    mitre_block:    str = "",   
 ) -> str:
     """
     User prompt for the correlator agent.

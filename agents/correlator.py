@@ -436,6 +436,23 @@ def correlate(agent_results: list[dict], report_id: str | None = None) -> dict:
             "Correlator: %d historical match(es) — top similarity=%.3f",
             len(memory_matches), memory_matches[0].similarity,
         )
+    # ── Step 3c — MITRE ATT&CK mapping ───────────────────────────────────────
+    log.info("Correlator: running MITRE ATT&CK mapping …")
+    try:
+        from tools.mitre_mapper import map_all_results, techniques_to_prompt_block, summary_stats
+        mitre_techniques  = map_all_results(agent_results)
+        mitre_prompt_block = techniques_to_prompt_block(mitre_techniques)
+        mitre_stats       = summary_stats(mitre_techniques)
+        log.info(
+            "Correlator: %d MITRE techniques mapped across %d tactic(s)",
+            mitre_stats["total"], mitre_stats.get("tactic_count", 0),
+        )
+    except Exception as exc:
+        log.warning("Correlator: MITRE mapping failed (non-fatal): %s", exc)
+        mitre_techniques   = []
+        mitre_prompt_block = ""
+        mitre_stats        = {}
+
 
     # ── Step 4 — Unified risk score ───────────────────────────────────────────
     unified_risk    = _compute_unified_risk(email_r, log_r, ip_r, correlations, memory_matches)
@@ -464,6 +481,7 @@ def correlate(agent_results: list[dict], report_id: str | None = None) -> dict:
         log_reasoning       = log_r.get("reasoning",  "") if log_r   else "",
         ip_reasoning        = ip_r.get("reasoning",   "") if ip_r    else "",
         memory_context      = memory_context,        # ← injected into prompt
+        mitre_block     = mitre_prompt_block,
     )
 
     # ── Step 8 — LLM call ─────────────────────────────────────────────────────
@@ -507,6 +525,9 @@ def correlate(agent_results: list[dict], report_id: str | None = None) -> dict:
         "agent_summary":      agent_summary,
         "indicators":         all_indicators,
         "unified_indicators": unified_indicators,
+        "mitre_techniques": [t.to_dict() for t in mitre_techniques],
+        "mitre_stats":      mitre_stats,
+        "attack_chain":     mitre_stats.get("attack_chain", []),
         "memory_matches": [   # serialisable version of MemoryMatch objects
             {
                 "similarity":  m.similarity,

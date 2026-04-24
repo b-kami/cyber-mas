@@ -114,32 +114,19 @@ def _sse(event_dict: dict) -> str:
 
 
 def _enrich_with_mitre(result: dict) -> dict:
-    """Add MITRE ATT&CK mappings to an agent result."""
-    techniques = []
-    seen = set()
-
-    # from signatures_hit (log agent)
-    for sig in result.get("signatures_hit", []):
-        if sig in _MITRE_MAP and sig not in seen:
-            techniques.append(_MITRE_MAP[sig])
-            seen.add(sig)
-
-    # from verdict (email agent)
-    verdict = result.get("verdict", "")
-    if verdict in _MITRE_MAP and verdict not in seen:
-        techniques.append(_MITRE_MAP[verdict])
-        seen.add(verdict)
-
-    # from indicators
-    for ind in result.get("indicators", []):
-        ind_lower = ind.lower().replace(" ", "_")
-        for key, val in _MITRE_MAP.items():
-            if key in ind_lower and key not in seen:
-                techniques.append(val)
-                seen.add(key)
-
-    result["mitre_techniques"] = techniques
+    """
+    Add real MITRE ATT&CK technique mappings to an agent result
+    using the mitre_mapper module.
+    """
+    try:
+        from tools.mitre_mapper import map_result
+        techniques = map_result(result)
+        result["mitre_techniques"] = [t.to_dict() for t in techniques]
+    except Exception as exc:
+        log.warning("MITRE mapping failed: %s", exc)
+        result["mitre_techniques"] = []
     return result
+
 
 
 async def _run_agent_async(task: dict) -> dict:
