@@ -150,6 +150,18 @@ async def _run_correlator_async(agent_results: list[dict]) -> dict:
     return await loop.run_in_executor(None, _sync)
 
 
+async def _notify_async(report: dict) -> None:
+    """Send email notification in background — does not block SSE stream."""
+    loop = asyncio.get_event_loop()
+    try:
+        def _sync():
+            from tools.notifier import notify
+            notify(report)
+        await loop.run_in_executor(None, _sync)
+    except Exception as exc:
+        log.warning("Background notification failed: %s", exc)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Routes
 # ══════════════════════════════════════════════════════════════════════════════
@@ -267,6 +279,9 @@ async def analyse(req: AnalyseRequest):
         _history.append(report)
 
         yield _sse({"event": "complete", "data": report})
+
+        # Fire-and-forget notification (don't block the SSE stream)
+        asyncio.create_task(_notify_async(report))
 
     return StreamingResponse(
         _stream(),

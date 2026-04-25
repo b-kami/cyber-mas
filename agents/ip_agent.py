@@ -432,6 +432,7 @@ def _parse_llm_response(raw: str) -> dict:
 def analyse(payload: str | dict) -> dict:
     """
     Scan an IP / host and assess its vulnerability posture.
+    Now includes pre-scan threat intelligence enrichment.
 
     Parameters
     ----------
@@ -462,6 +463,22 @@ def analyse(payload: str | dict) -> dict:
     if _is_private(target):
         log.info("IP agent: target %s is private/loopback — scan permitted.", target)
 
+    # ── Step 1b — Threat intel enrichment (NEW) ───────────────────────────────
+    intel_report  = None
+    intel_context = ""
+    intel_boost   = 0.0
+
+    try:
+        from tools.threat_intel import enrich_ip
+        log.info("IP agent: querying threat intelligence for %s …", target)
+        intel_report  = enrich_ip(target)
+        intel_context = intel_report.to_prompt_block()
+        intel_boost   = intel_report.risk_boost
+        if intel_report.should_block:
+            log.warning("IP agent: %s flagged for BLOCKING by threat intel", target)
+    except Exception as exc:
+        log.warning("IP agent: threat intel failed (non-fatal): %s", exc)
+
     # ── Step 2 — Nmap scan ────────────────────────────────────────────────────
     log.info("IP agent: starting Nmap scan …")
     try:
@@ -469,10 +486,10 @@ def analyse(payload: str | dict) -> dict:
     except RuntimeError as exc:
         log.error("IP agent: Nmap failed — %s", exc)
         # Return a graceful partial result rather than crashing
-        return {
+        base_result = {
             "agent":         "ip",
             "verdict":       "uncertain",
-            "risk_score":    0.0,
+            "risk_score":    0.0 + intel_boost,
             "confidence":    0.0,
             "reasoning":     str(exc),
             "indicators":    ["nmap_unavailable"],
@@ -482,6 +499,11 @@ def analyse(payload: str | dict) -> dict:
             "os_guess":      "unknown",
             "scan_duration": 0.0,
         }
+        if intel_report:
+            base_result["threat_intel"] = intel_report.to_dict()
+            if intel_report.should_block:
+                base_result["indicators"].append("threat_intel_block_recommended")
+        return base_result
 
     # ── Step 3 — Parse Nmap results ───────────────────────────────────────────
     log.info("IP agent: parsing scan results …")
@@ -505,16 +527,17 @@ def analyse(payload: str | dict) -> dict:
     # ── Step 5 — Build scan summary for LLM ──────────────────────────────────
     scan_summary = _build_scan_summary(parsed, cves)
 
-    # ── Step 6 — Build prompts ────────────────────────────────────────────────
+    # ── Step 6 — Build prompts (with intel context) ───────────────────────────
     system_prompt = ip_system_prompt()
     user_prompt   = ip_user_prompt(
-        target       = target,
-        scan_summary = scan_summary,
-        open_ports   = all_ports,
-        cve_count    = len(cves),
-        top_cves     = cves[:MAX_CVES_SHOWN],
-        os_guess     = os_guess,
-        risky_ports  = risky_ports,
+        target        = target,
+        scan_summary  = scan_summary,
+        open_ports    = all_ports,
+        cve_count     = len(cves),
+        top_cves      = cves[:MAX_CVES_SHOWN],
+        os_guess      = os_guess,
+        risky_ports   = risky_ports,
+        intel_context = intel_context,
     )
 
     # ── Step 7 — LLM call ─────────────────────────────────────────────────────
@@ -525,13 +548,23 @@ def analyse(payload: str | dict) -> dict:
     log.info("IP agent: parsing LLM response …")
     llm_result = _parse_llm_response(raw_response)
 
-    # Augment indicators with risky port findings
+    # ── Step 9 — Apply risk boost + indicators ────────────────────────────────
+    base_risk = llm_result.get("risk_score", 0.0)
+    boosted_risk = round(min(base_risk + intel_boost, 1.0), 3)
+    if boosted_risk != base_risk:
+        log.info("IP agent: risk boosted %.2f → %.2f (intel +%.2f)",
+                 base_risk, boosted_risk, intel_boost)
+    llm_result["risk_score"] = boosted_risk
+
     if risky_ports:
+        llm_result["indicators"].append(f"High-risk ports open: {risky_ports}")
+    if intel_report and intel_report.should_block:
+        llm_result["indicators"].append("threat_intel_block_recommended")
         llm_result["indicators"].append(
-            f"High-risk ports open: {risky_ports}"
+            f"AbuseIPDB score: {intel_report.abuse_score}/100"
         )
 
-    # ── Step 9 — Assemble result ──────────────────────────────────────────────
+    # ── Step 10 — Assemble result ─────────────────────────────────────────────
     result = {
         "agent": "ip",
         **llm_result,
@@ -540,11 +573,16 @@ def analyse(payload: str | dict) -> dict:
         "cves":          cves,
         "os_guess":      os_guess,
         "scan_duration": round(duration, 2),
+        "threat_intel":  intel_report.to_dict() if intel_report else None,
     }
 
     log.info(
-        "IP agent: done — verdict=%s  risk=%.2f  ports=%d  cves=%d",
-        result["verdict"], result["risk_score"], len(all_ports), len(cves),
+        "IP agent: done — verdict=%s  risk=%.2f  ports=%d  cves=%d  "
+        "intel_boost=+%.2f  block=%s",
+        result["verdict"], result["risk_score"],
+        len(all_ports), len(cves),
+        intel_boost,
+        intel_report.should_block if intel_report else False,
     )
     return result
 

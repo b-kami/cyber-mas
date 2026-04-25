@@ -180,12 +180,26 @@ def ip_user_prompt(
     top_cves: list[dict],
     os_guess: str,
     risky_ports: list[int],
+    intel_context: str = "",
 ) -> str:
     """
     User prompt for the IP agent — injects Nmap + NVD results.
     """
     
     risky_str = f"Yes ({risky_ports})" if risky_ports else "None"
+
+    intel_block = ""
+    if intel_context and intel_context.strip():
+        intel_block = f"""
+
+════════════════════════════════════════
+THREAT INTELLIGENCE (AbuseIPDB / VirusTotal / Shodan)
+════════════════════════════════════════
+{intel_context}
+
+If threat intel indicates BLOCK RECOMMENDED, escalate verdict to at least
+'suspicious'. If abuse_score > 75, escalate to 'vulnerable' or higher.
+"""
 
     return f"""Analyse the following network scan results and return your verdict in the required JSON format.
 
@@ -198,7 +212,7 @@ Total CVEs Found: {cve_count}
 
 ── DETAILED SCAN SUMMARY ──────────────────────────────────────
 {scan_summary}
-
+{intel_block}
 Now apply your chain-of-thought reasoning and return the JSON verdict."""
 
 
@@ -233,7 +247,8 @@ def correlator_user_prompt(
     log_reasoning:       str = "",
     ip_reasoning:        str = "",
     memory_context:      str = "",
-    mitre_block:    str = "",   
+    mitre_block:    str = "",
+    intel_context:  str = "",
 ) -> str:
     """
     User prompt for the correlator agent.
@@ -279,7 +294,6 @@ def correlator_user_prompt(
         reasoning_block += f"LOG AGENT REASONING:\n{log_reasoning[:300]}\n\n"
     if ip_reasoning:
         reasoning_block += f"IP AGENT REASONING:\n{ip_reasoning[:300]}\n\n"
- 
     # Memory context block (only shown if Qdrant returned results)
     memory_block = ""
     if memory_context and memory_context.strip() and "unavailable" not in memory_context:
@@ -288,7 +302,18 @@ def correlator_user_prompt(
 HISTORICAL THREAT MEMORY (from Qdrant)
 ════════════════════════════════════════
 {memory_context}
- 
+"""
+
+    # Threat intel context block (only shown if threat intel returned data)
+    intel_block_str = ""
+    if intel_context and intel_context.strip():
+        intel_block_str = f"""
+════════════════════════════════════════
+THREAT INTELLIGENCE (REAL-TIME)
+════════════════════════════════════════
+{intel_context}
+
+If threat intel shows BLOCK RECOMMENDED for any IP, escalate severity.
 """
  
     return f"""You are the final decision-maker in a multi-agent cybersecurity system.
@@ -321,6 +346,7 @@ INDIVIDUAL AGENT REASONING
 ════════════════════════════════════════
 {reasoning_block.strip()}
 {memory_block}
+{intel_block_str}
 ════════════════════════════════════════
 YOUR TASK
 ════════════════════════════════════════

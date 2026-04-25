@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#080c0a; font-family:Arial,sans-serif; color:#b8d4bc; }
+  .shell { max-width:720px; margin:0 auto; background:#0d1210; }
+  table { border-collapse:collapse; width:100%; }
+  td { vertical-align:top; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- TOP BAR -->
+  <div style="background:#00c060;height:4px"></div>
+
+  <!-- HEADER -->
+  <div style="background:#111916;padding:20px 24px;border-bottom:1px solid #1e2e22">
+    <div style="font-family:monospace;font-size:22px;font-weight:bold;
+                color:#00c060;letter-spacing:4px">CYBER-MAS</div>
+    <div style="font-size:11px;color:#5a7a5e;letter-spacing:1px;margin-top:2px">
+      MULTI-AGENT CYBERSECURITY THREAT DETECTION SYSTEM
+    </div>
+  </div>
+
+  <!-- VERDICT BANNER -->
+  <div style="background:#ff335522;border:1px solid #ff335555;margin:16px;padding:16px 20px;
+              border-left:4px solid #ff3355">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:11px;color:#5a7a5e;letter-spacing:2px;margin-bottom:4px">VERDICT</div>
+        <div style="font-size:28px;font-weight:bold;color:#ff3355;letter-spacing:3px;
+                    font-family:monospace">CRITICAL</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:#5a7a5e;letter-spacing:2px;margin-bottom:4px">UNIFIED RISK</div>
+        <div style="font-size:32px;font-weight:bold;color:#ff3355;font-family:monospace">92%</div>
+        <div style="font-family:monospace;font-size:11px;color:#ff3355;letter-spacing:1px">███████████████████████████░░░</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- META -->
+  <div style="margin:0 16px;padding:12px;background:#111916;border:1px solid #1e2e22;
+              font-family:monospace;font-size:11px;color:#5a7a5e">
+    REPORT ID: <span style="color:#00ddcc">test-smoke-001</span> &nbsp;|&nbsp;
+    TIMESTAMP: <span style="color:#b8d4bc">2026-04-25T19:26:21</span> &nbsp;|&nbsp;
+    CONFIDENCE: <span style="color:#b8d4bc">0.90</span>
+  </div>
+
+  <!-- AGENT SUMMARY -->
+  <div style="margin:16px">
+    <div style="font-family:monospace;font-size:11px;letter-spacing:2px;
+                color:#00c060;margin-bottom:8px">▸ AGENT SUMMARY</div>
+    <table style="background:#111916;border:1px solid #1e2e22">
+      <tr style="background:#172018">
+        <th style="padding:6px 10px;text-align:left;font-size:10px;
+                   color:#5a7a5e;letter-spacing:1px">AGENT</th>
+        <th style="padding:6px 10px;text-align:left;font-size:10px;
+                   color:#5a7a5e;letter-spacing:1px">VERDICT</th>
+        <th style="padding:6px 10px;text-align:left;font-size:10px;
+                   color:#5a7a5e;letter-spacing:1px">RISK</th>
+        <th style="padding:6px 10px;text-align:left;font-size:10px;
+                   color:#5a7a5e;letter-spacing:1px">DURATION</th>
+      </tr>
+      
+        <tr>
+          <td style="padding:6px 10px;font-family:monospace;color:#b8d4bc">EMAIL</td>
+          <td style="padding:6px 10px;font-weight:bold;color:#ff3355">PHISHING</td>
+          <td style="padding:6px 10px;font-family:monospace;color:#ff3355">0.92</td>
+          <td style="padding:6px 10px;font-family:monospace;color:#5a7a5e">8.2s</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 10px;font-family:monospace;color:#b8d4bc">LOG</td>
+          <td style="padding:6px 10px;font-weight:bold;color:#ff3355">MALICIOUS</td>
+          <td style="padding:6px 10px;font-family:monospace;color:#ff3355">0.88</td>
+          <td style="padding:6px 10px;font-family:monospace;color:#5a7a5e">3.1s</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 10px;font-family:monospace;color:#b8d4bc">IP</td>
+          <td style="padding:6px 10px;font-weight:bold;color:#ffaa00">VULNERABLE</td>
+          <td style="padding:6px 10px;font-family:monospace;color:#ff7799">0.79</td>
+          <td style="padding:6px 10px;font-family:monospace;color:#5a7a5e">22.4s</td>
+        </tr>
+    </table>
+  </div>
+
+  <!-- CORRELATIONS -->
+  
+  <div style="margin:16px">
+    <div style="font-family:monospace;font-size:11px;letter-spacing:2px;
+                color:#00c060;margin-bottom:8px">▸ CORRELATION RULES FIRED</div>
+    <table style="background:#111916;border:1px solid #1e2e22">
+      
+        <tr>
+          <td style="padding:5px 10px;font-family:monospace;color:#00ddcc;white-space:nowrap">C1_shared_ip</td>
+          <td style="padding:5px 10px;color:#b8d4bc;font-size:12px">Same IP 203.0.113.42 appears in log anomalies, email sender, and network scan.</td>
+        </tr>
+        <tr>
+          <td style="padding:5px 10px;font-family:monospace;color:#00ddcc;white-space:nowrap">C2_phishing_and_breach</td>
+          <td style="padding:5px 10px;color:#b8d4bc;font-size:12px">Phishing email detected alongside malicious log activity — coordinated intrusion.</td>
+        </tr>
+        <tr>
+          <td style="padding:5px 10px;font-family:monospace;color:#00ddcc;white-space:nowrap">C3_vuln_and_exploit</td>
+          <td style="padding:5px 10px;color:#b8d4bc;font-size:12px">Host has known CVEs AND log shows brute_force + privilege_escalation.</td>
+        </tr>
+        <tr>
+          <td style="padding:5px 10px;font-family:monospace;color:#00ddcc;white-space:nowrap">C4_multi_vector_high_risk</td>
+          <td style="padding:5px 10px;color:#b8d4bc;font-size:12px">All 3 active agents report risk > 0.6 — multi-vector attack confirmed.</td>
+        </tr>
+    </table>
+  </div>
+
+  <!-- ATTACK CHAIN -->
+  
+  <div style="margin:16px">
+    <div style="font-family:monospace;font-size:11px;letter-spacing:2px;
+                color:#00c060;margin-bottom:8px">▸ MITRE ATT&CK CHAIN</div>
+    
+        <div style="background:#111916;border:1px solid #1e2e22;border-left:3px solid #00ddcc;
+                    padding:10px 14px;margin:8px 0;font-family:monospace;font-size:12px">
+          <span style="color:#00ddcc">Initial Access</span> &nbsp;▶&nbsp; <span style="color:#00ddcc">Credential Access</span> &nbsp;▶&nbsp; <span style="color:#00ddcc">Privilege Escalation</span> &nbsp;▶&nbsp; <span style="color:#00ddcc">Lateral Movement</span>
+        </div>
+  </div>
+
+  <!-- REASONING -->
+  <div style="margin:16px">
+    <div style="font-family:monospace;font-size:11px;letter-spacing:2px;
+                color:#00c060;margin-bottom:8px">▸ HOLISTIC REASONING</div>
+    <div style="background:#111916;border:1px solid #1e2e22;border-left:3px solid #00c060;
+                padding:12px 16px;font-size:13px;line-height:1.7;color:#b8d4bc">
+      A coordinated multi-vector attack is confirmed. A phishing email from a PayPal-spoofing domain coincides with SSH brute-force activity from 203.0.113.42 that resulted in a successful root login. The same IP hosts critical CVEs including EternalBlue (CVSS 9.8). Three correlation rules fired simultaneously. Immediate containment is required.
+    </div>
+  </div>
+
+  <!-- RECOMMENDATIONS -->
+  
+  <div style="margin:16px">
+    <div style="font-family:monospace;font-size:11px;letter-spacing:2px;
+                color:#00c060;margin-bottom:8px">▸ RECOMMENDATIONS</div>
+    <div style="background:#111916;border:1px solid #1e2e22;padding:8px 16px">
+      
+        <div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #1e2e22">
+          <span style="color:#ffaa00;font-family:monospace;font-weight:bold;min-width:24px">01</span>
+          <span style="color:#b8d4bc;font-size:13px">IMMEDIATE: Isolate 203.0.113.42 from all network segments.</span>
+        </div>
+        <div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #1e2e22">
+          <span style="color:#ffaa00;font-family:monospace;font-weight:bold;min-width:24px">02</span>
+          <span style="color:#b8d4bc;font-size:13px">URGENT: Force password reset for root and all accounts accessed from this IP.</span>
+        </div>
+        <div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #1e2e22">
+          <span style="color:#ffaa00;font-family:monospace;font-weight:bold;min-width:24px">03</span>
+          <span style="color:#b8d4bc;font-size:13px">Block the domain paypa1-verify.com at DNS and email gateway level.</span>
+        </div>
+        <div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #1e2e22">
+          <span style="color:#ffaa00;font-family:monospace;font-weight:bold;min-width:24px">04</span>
+          <span style="color:#b8d4bc;font-size:13px">Patch OpenSSH to latest version and disable SMBv1 on all hosts.</span>
+        </div>
+        <div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #1e2e22">
+          <span style="color:#ffaa00;font-family:monospace;font-weight:bold;min-width:24px">05</span>
+          <span style="color:#b8d4bc;font-size:13px">Review all outbound connections from 203.0.113.42 in the last 72 hours.</span>
+        </div>
+        <div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #1e2e22">
+          <span style="color:#ffaa00;font-family:monospace;font-weight:bold;min-width:24px">06</span>
+          <span style="color:#b8d4bc;font-size:13px">File an incident report and notify the security team.</span>
+        </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div style="background:#111916;border-top:1px solid #1e2e22;
+              padding:12px 20px;margin-top:16px">
+    <div style="font-size:10px;color:#5a7a5e;text-align:center;font-family:monospace">
+      CYBER-MAS  —  Automated Threat Detection Report  —  2026-04-25T19:26:21<br/>
+      Full PDF report attached to this email.
+    </div>
+  </div>
+
+  <div style="background:#00c060;height:2px"></div>
+
+</div>
+</body>
+</html>

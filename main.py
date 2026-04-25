@@ -450,6 +450,20 @@ def run(args: argparse.Namespace) -> dict:
         if not args.json:
             _print_correlator_result(corr_result, quiet=quiet)
 
+    # ── Notify (after correlator) ─────────────────────────────────────────────
+    if not args.no_correlate and not args.json:
+        try:
+            from tools.notifier import notify
+            log.info("Sending email notification …")
+            ok = notify(report)
+            if ok:
+                if _RICH:
+                    console.print("[dim]Email notification sent.[/dim]")
+                else:
+                    print("  Email notification sent.")
+        except Exception as exc:
+            log.warning("Notification failed (non-fatal): %s", exc)
+
     return report
 
 

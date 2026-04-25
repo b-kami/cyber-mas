@@ -301,6 +301,7 @@ def _compute_unified_risk(
     ip_r:           dict | None,
     correlations:   list[str],
     memory_matches: list[Any],
+    intel_boost:    float = 0.0,
 ) -> float:
     total_weight = 0.0
     weighted_sum = 0.0
@@ -311,8 +312,8 @@ def _compute_unified_risk(
             weighted_sum += _safe_risk(result) * weight
             total_weight += weight
 
-    base  = (weighted_sum / total_weight) if total_weight > 0 else 0.0
-    boost = len(correlations) * _CORRELATION_BOOST
+    base       = (weighted_sum / total_weight) if total_weight > 0 else 0.0
+    corr_boost = len(correlations) * _CORRELATION_BOOST
 
     # Memory boost — strong historical matches with high-risk verdicts
     # add a small confidence nudge (capped)
@@ -323,10 +324,10 @@ def _compute_unified_risk(
             memory_boost += _MEMORY_BOOST_PER_MATCH
     memory_boost = min(memory_boost, _MEMORY_MAX_BOOST)
 
-    total = min(round(base + boost + memory_boost, 3), 1.0)
+    total = min(round(base + corr_boost + memory_boost + intel_boost, 3), 1.0)
     log.info(
-        "Unified risk: base=%.3f + correlations=%.3f + memory=%.3f = %.3f",
-        base, boost, memory_boost, total,
+        "Unified risk: base=%.3f + corr=%.3f + memory=%.3f + intel=%.3f = %.3f",
+        base, corr_boost, memory_boost, intel_boost, total,
     )
     return total
 
@@ -436,7 +437,60 @@ def correlate(agent_results: list[dict], report_id: str | None = None) -> dict:
             "Correlator: %d historical match(es) — top similarity=%.3f",
             len(memory_matches), memory_matches[0].similarity,
         )
-    # ── Step 3c — MITRE ATT&CK mapping ───────────────────────────────────────
+    # ── Step 3c — Threat intelligence cross-check (NEW) ──────────────────────
+    intel_reports   = {}
+    intel_context   = ""
+    intel_boost     = 0.0
+    intel_techniques = []
+
+    try:
+        from tools.threat_intel import (
+            extract_ips_from_results, enrich_all_ips,
+            intel_to_mitre_techniques,
+        )
+
+        ti_ips = extract_ips_from_results(agent_results)
+
+        if ti_ips:
+            log.info("Correlator: querying threat intel for %d IP(s): %s", len(ti_ips), ti_ips)
+            intel_reports = enrich_all_ips(ti_ips)
+
+            context_parts = []
+            for ip, intel in intel_reports.items():
+                if intel.sources_queried:
+                    context_parts.append(intel.to_prompt_block())
+                    if intel.should_block:
+                        unified_indicators.append(
+                            f"Threat intel: {ip} flagged for blocking "
+                            f"(abuse={intel.abuse_score}/100, "
+                            f"VT={intel.vt_malicious}/{intel.vt_total})"
+                        )
+                    intel_boost += intel.risk_boost
+
+            if context_parts:
+                intel_context = (
+                    "[THREAT INTELLIGENCE — REAL-TIME ENRICHMENT]\n"
+                    + "\n\n".join(context_parts)
+                )
+
+            intel_boost = min(intel_boost, 0.15)
+            intel_techniques = intel_to_mitre_techniques(intel_reports)
+            log.info(
+                "Correlator: threat intel complete — %d IP(s) checked, boost=+%.2f, block_flags=%d",
+                len(intel_reports), intel_boost,
+                sum(1 for r in intel_reports.values() if r.should_block),
+            )
+        else:
+            log.info("Correlator: no public IPs found — skipping threat intel")
+
+    except Exception as exc:
+        log.warning("Correlator: threat intel cross-check failed (non-fatal): %s", exc)
+        intel_reports    = {}
+        intel_context    = ""
+        intel_boost      = 0.0
+        intel_techniques = []
+
+    # ── Step 3d — MITRE ATT&CK mapping ───────────────────────────────────────
     log.info("Correlator: running MITRE ATT&CK mapping …")
     try:
         from tools.mitre_mapper import map_all_results, techniques_to_prompt_block, summary_stats
@@ -455,7 +509,7 @@ def correlate(agent_results: list[dict], report_id: str | None = None) -> dict:
 
 
     # ── Step 4 — Unified risk score ───────────────────────────────────────────
-    unified_risk    = _compute_unified_risk(email_r, log_r, ip_r, correlations, memory_matches)
+    unified_risk    = _compute_unified_risk(email_r, log_r, ip_r, correlations, memory_matches, intel_boost)
     pre_llm_verdict = _risk_to_verdict(unified_risk)
     log.info("Correlator: unified_risk=%.3f  pre-LLM verdict=%s", unified_risk, pre_llm_verdict)
 
@@ -480,8 +534,9 @@ def correlate(agent_results: list[dict], report_id: str | None = None) -> dict:
         email_reasoning     = email_r.get("reasoning", "") if email_r else "",
         log_reasoning       = log_r.get("reasoning",  "") if log_r   else "",
         ip_reasoning        = ip_r.get("reasoning",   "") if ip_r    else "",
-        memory_context      = memory_context,        # ← injected into prompt
-        mitre_block     = mitre_prompt_block,
+        memory_context      = memory_context,
+        mitre_block         = mitre_prompt_block,
+        intel_context       = intel_context,
     )
 
     # ── Step 8 — LLM call ─────────────────────────────────────────────────────
@@ -528,7 +583,8 @@ def correlate(agent_results: list[dict], report_id: str | None = None) -> dict:
         "mitre_techniques": [t.to_dict() for t in mitre_techniques],
         "mitre_stats":      mitre_stats,
         "attack_chain":     mitre_stats.get("attack_chain", []),
-        "memory_matches": [   # serialisable version of MemoryMatch objects
+        "threat_intel":     {ip: r.to_dict() for ip, r in intel_reports.items()} if intel_reports else None,
+        "memory_matches": [
             {
                 "similarity":  m.similarity,
                 "agent_type":  m.agent_type,
