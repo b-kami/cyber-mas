@@ -1,32 +1,53 @@
 """
-main.py
+main.py  (v2 — standard mode + continuous monitoring)
 ══════════════════════════════════════════════════════════════════════════════
-Cyber-MAS  —  Multi-Agent Cybersecurity Threat Detection System
-CLI entry point.
+Cyber-MAS CLI entry point.
 
-USAGE
-─────
-  # Full pipeline (all three agents + correlator)
-  python main.py --email path/to/email.eml --log path/to/auth.log --ip 192.168.1.1
+STANDARD MODE  (one-shot analysis)
+────────────────────────────────────
+  # Direct input
+  python main.py --email alert.eml --log auth.log --ip 192.168.1.1
 
-  # Any combination of agents
-  python main.py --email suspicious.eml
-  python main.py --log syslog.txt --ip 10.0.0.5
-  python main.py --ip scanme.nmap.org
-
-  # Pass inline text instead of files
-  python main.py --email-text "From: attacker@evil.com\nSubject: Click here"
-  python main.py --log-text  "2024-03-15 02:13:44 WARN Failed password for root"
+  # Inline text
+  python main.py --email-text "From: evil@phish.com ..."
+  python main.py --log-text  "2024-03-15 02:13:44 WARN Failed password ..."
   python main.py --ip-text   "203.0.113.42"
 
-  # Output options
-  python main.py --email email.eml --output report.json   # save JSON report
-  python main.py --email email.eml --no-correlate         # skip correlator
-  python main.py --email email.eml --quiet                # minimal output
+  # Pick from folder (interactive selector)
+  python main.py --email-dir data/raw_emails/
+  python main.py --log-dir   data/sample_logs/
+  python main.py --email-dir data/raw_emails/ --log-dir data/sample_logs/
 
-  # Utility
-  python main.py --build-index                            # build FAISS index
-  python main.py --check                                  # environment check
+  # Output options
+  python main.py --email alert.eml --output report.json
+  python main.py --email alert.eml --json
+  python main.py --email alert.eml --quiet
+  python main.py --email alert.eml --no-correlate
+
+CONTINUOUS MONITORING MODE
+───────────────────────────
+  # Watch a log file
+  python main.py --watch-log /var/log/auth.log
+
+  # Watch IMAP inbox
+  python main.py --watch-email-imap
+
+  # Watch an IP (recurring Nmap scans)
+  python main.py --watch-ip 192.168.1.1
+
+  # Run all three simultaneously
+  python main.py --watch-all --watch-log /var/log/auth.log --watch-ip 10.0.0.5
+
+  # Tuning
+  python main.py --watch-log auth.log --interval 30   # check every 30s
+  python main.py --watch-ip 10.0.0.1  --ip-interval 300  # scan every 5min
+  python main.py --watch-all --alert-log alerts.jsonl     # custom alert log
+
+UTILITY
+────────
+  python main.py --check           # environment check
+  python main.py --build-index     # build FAISS email index
+  python main.py --monitor-status  # show watcher config without starting
 """
 
 from __future__ import annotations
@@ -39,185 +60,164 @@ import sys
 import time
 from pathlib import Path
 
-# ── Ensure project root is always in sys.path (fixes ModuleNotFoundError) ────
-_PROJECT_ROOT = Path(__file__).resolve().parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
-
 # ── Logging setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     datefmt="%H:%M:%S",
     level=logging.INFO,
 )
-log = logging.getLogger("main")
+log = logging.getLogger("cyber_mas.main")
 
-# ── Rich (optional — graceful fallback to plain print) ────────────────────────
+# ── Rich (optional) ───────────────────────────────────────────────────────────
 try:
     from rich.console import Console
-    from rich.panel import Panel
-    from rich.table import Table
-    from rich import box
-    _RICH = True
+    from rich.panel   import Panel
+    from rich.table   import Table
+    from rich         import box
+    _RICH   = True
     console = Console()
 except ImportError:
-    _RICH = False
+    _RICH   = False
     console = None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Display helpers
+# Display helpers (unchanged from v1)
 # ══════════════════════════════════════════════════════════════════════════════
 
 _VERDICT_COLORS = {
-    # correlator verdicts
-    "critical":    "bold red",
-    "high":        "red",
-    "medium":      "yellow",
-    "low":         "green",
-    # agent verdicts
-    "phishing":    "bold red",
-    "malicious":   "bold red",
-    "vulnerable":  "red",
-    "spam":        "yellow",
-    "suspicious":  "yellow",
-    "legitimate":  "green",
-    "benign":      "green",
-    "clean":       "green",
-    "uncertain":   "dim",
+    "critical": "bold red",  "high": "red",      "medium": "yellow",
+    "low": "green",           "phishing": "bold red", "malicious": "bold red",
+    "vulnerable": "red",      "suspicious": "yellow", "spam": "yellow",
+    "legitimate": "green",    "benign": "green",  "clean": "green",
+    "uncertain": "dim",
 }
-
 
 def _color(verdict: str) -> str:
     return _VERDICT_COLORS.get(verdict.lower(), "white")
 
-
 def _risk_bar(score: float, width: int = 20) -> str:
-    """ASCII risk bar: ████████░░░░░░░░░░░░ 0.42"""
     filled = int(score * width)
-    bar    = "█" * filled + "░" * (width - filled)
-    return f"[{bar}] {score:.2f}"
-
+    return "█" * filled + "░" * (width - filled) + f" {score:.2f}"
 
 def _print_banner() -> None:
     if _RICH:
         console.print(Panel.fit(
             "[bold cyan]Cyber-MAS[/bold cyan]  •  "
             "Multi-Agent Cybersecurity Threat Detection\n"
-            "[dim]LLaMA 3.3-70B via Groq  •  FAISS  •  Nmap  •  NVD[/dim]",
+            "[dim]LLaMA 3.3-70B via Groq  •  FAISS  •  Nmap  •  NVD  •  "
+            "Qdrant  •  MITRE ATT&CK[/dim]",
             border_style="cyan",
         ))
     else:
-        print("\n" + "═" * 60)
+        print("\n" + "═"*60)
         print("  Cyber-MAS  —  Multi-Agent Cybersecurity Threat Detection")
-        print("═" * 60 + "\n")
-
+        print("═"*60 + "\n")
 
 def _print_agent_result(result: dict, quiet: bool = False) -> None:
-    """Pretty-print a single agent result."""
-    agent   = result.get("agent", "?").upper()
-    verdict = result.get("verdict", "?")
+    agent   = result.get("agent","?").upper()
+    verdict = result.get("verdict","?")
     risk    = result.get("risk_score", result.get("unified_risk", 0.0))
     conf    = result.get("confidence", 0.0)
-
     if _RICH and not quiet:
         color = _color(verdict)
-        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-        table.add_column("key",   style="dim", width=18)
-        table.add_column("value", style="white")
-
-        table.add_row("Agent",      f"[bold]{agent}[/bold]")
-        table.add_row("Verdict",    f"[{color}]{verdict.upper()}[/{color}]")
-        table.add_row("Risk score", _risk_bar(risk))
-        table.add_row("Confidence", f"{conf:.2f}")
-
+        t = Table(box=box.SIMPLE, show_header=False, padding=(0,1))
+        t.add_column("key",   style="dim", width=18)
+        t.add_column("value", style="white")
+        t.add_row("Agent",      f"[bold]{agent}[/bold]")
+        t.add_row("Verdict",    f"[{color}]{verdict.upper()}[/{color}]")
+        t.add_row("Risk score", _risk_bar(risk))
+        t.add_row("Confidence", f"{conf:.2f}")
         if result.get("signatures_hit"):
-            table.add_row("Signatures", ", ".join(result["signatures_hit"]))
-
-        if result.get("email_metadata"):
-            m = result["email_metadata"]
-            table.add_row("Subject",  m.get("subject", ""))
-            table.add_row("Sender",   m.get("sender", ""))
-            table.add_row("Links",    str(m.get("link_count", 0)))
-
-        if result.get("target"):
-            table.add_row("Target",      result["target"])
-            table.add_row("Open ports",  str(len(result.get("open_ports", []))))
-            table.add_row("CVEs found",  str(len(result.get("cves", []))))
-
+            t.add_row("Signatures", ", ".join(result["signatures_hit"]))
         if result.get("reasoning") and not quiet:
-            reasoning = result["reasoning"][:300]
-            table.add_row("Reasoning", reasoning)
-
-        console.print(Panel(table, title=f"[bold]{agent} Agent[/bold]",
+            t.add_row("Reasoning", result["reasoning"][:250])
+        console.print(Panel(t, title=f"[bold]{agent} Agent[/bold]",
                             border_style=color))
     else:
-        print(f"\n  [{agent} AGENT]")
-        print(f"  Verdict    : {verdict.upper()}")
-        print(f"  Risk score : {_risk_bar(risk)}")
-        print(f"  Confidence : {conf:.2f}")
-        if result.get("reasoning") and not quiet:
-            print(f"  Reasoning  : {result['reasoning'][:200]}")
-
+        print(f"\n  [{agent} AGENT]  verdict={verdict.upper()}  "
+              f"risk={_risk_bar(risk)}  conf={conf:.2f}")
 
 def _print_correlator_result(result: dict, quiet: bool = False) -> None:
-    """Pretty-print the correlator's unified assessment."""
-    verdict = result.get("verdict", "?")
+    verdict = result.get("verdict","?")
     risk    = result.get("unified_risk", 0.0)
     conf    = result.get("confidence", 0.0)
     corrs   = result.get("correlations", [])
     recs    = result.get("recommendations", [])
-
+    chain   = result.get("attack_chain", [])
     if _RICH:
         color = _color(verdict)
-        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-        table.add_column("key",   style="dim", width=18)
-        table.add_column("value", style="white")
-
-        table.add_row("Verdict",      f"[{color} bold]{verdict.upper()}[/{color} bold]")
-        table.add_row("Unified risk", _risk_bar(risk))
-        table.add_row("Confidence",   f"{conf:.2f}")
-
+        t = Table(box=box.SIMPLE, show_header=False, padding=(0,1))
+        t.add_column("key",   style="dim", width=18)
+        t.add_column("value", style="white")
+        t.add_row("Verdict",      f"[{color} bold]{verdict.upper()}[/{color} bold]")
+        t.add_row("Unified risk", _risk_bar(risk))
+        t.add_row("Confidence",   f"{conf:.2f}")
         if corrs:
-            table.add_row("Correlations", "\n".join(f"• {c}" for c in corrs))
-        else:
-            table.add_row("Correlations", "[dim]none[/dim]")
-
-        summary = result.get("agent_summary", {})
-        for ag, val in summary.items():
-            if val:
-                table.add_row(
-                    f"  {ag.capitalize()}",
-                    f"{val['verdict']}  risk={val['risk_score']:.2f}",
-                )
-
+            t.add_row("Correlations", "\n".join(f"• {c}" for c in corrs))
+        if chain:
+            t.add_row("Attack chain", " → ".join(chain))
         if result.get("reasoning") and not quiet:
-            table.add_row("Reasoning", result["reasoning"][:400])
-
+            t.add_row("Reasoning", result["reasoning"][:350])
         if recs and not quiet:
-            table.add_row(
-                "Recommendations",
-                "\n".join(f"{i+1}. {r}" for i, r in enumerate(recs)),
-            )
-
-        console.print(Panel(table, title="[bold]UNIFIED THREAT ASSESSMENT[/bold]",
+            t.add_row("Recommendations",
+                      "\n".join(f"{i+1}. {r}" for i,r in enumerate(recs)))
+        console.print(Panel(t, title="[bold]UNIFIED THREAT ASSESSMENT[/bold]",
                             border_style=color))
     else:
-        print("\n" + "═" * 60)
-        print("  UNIFIED THREAT ASSESSMENT")
-        print("═" * 60)
-        print(f"  Verdict      : {verdict.upper()}")
-        print(f"  Unified risk : {_risk_bar(risk)}")
-        print(f"  Confidence   : {conf:.2f}")
-        if corrs:
-            print(f"  Correlations : {', '.join(corrs)}")
+        print(f"\n{'═'*60}\n  UNIFIED: verdict={verdict.upper()}  "
+              f"risk={_risk_bar(risk)}")
         if recs and not quiet:
-            print("  Recommendations:")
-            for i, r in enumerate(recs, 1):
-                print(f"    {i}. {r}")
-        if result.get("reasoning") and not quiet:
-            print(f"  Reasoning    : {result['reasoning'][:300]}")
+            for i,r in enumerate(recs,1):
+                print(f"  {i}. {r}")
         print()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# File picker — interactive selector from a directory
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _pick_file(directory: str, extensions: list[str], label: str) -> str | None:
+    """
+    Interactive file picker.
+    Lists files in *directory* matching *extensions*, user selects one.
+    Returns file contents as string, or None if cancelled.
+    """
+    d = Path(directory)
+    if not d.exists():
+        log.error("Directory not found: %s", directory)
+        return None
+
+    files = sorted([
+        f for f in d.rglob("*")
+        if f.is_file() and (not extensions or f.suffix.lower() in extensions)
+    ])
+
+    if not files:
+        log.error("No matching files found in %s (extensions=%s)", directory, extensions)
+        return None
+
+    print(f"\n  {label} — select a file from {directory}:")
+    print(f"  {'─'*48}")
+    for i, f in enumerate(files[:50], 1):
+        size = f.stat().st_size
+        print(f"  {i:3d}.  {f.relative_to(d)}  [{size:,} bytes]")
+    print(f"  {'─'*48}")
+    print(f"   0.  Cancel")
+
+    while True:
+        try:
+            choice = input(f"\n  Enter number (1-{min(len(files),50)}) or 0 to cancel: ").strip()
+            n = int(choice)
+            if n == 0:
+                return None
+            if 1 <= n <= min(len(files), 50):
+                selected = files[n-1]
+                print(f"  Selected: {selected.name}\n")
+                return selected.read_text(encoding="utf-8", errors="replace")
+            print(f"  Invalid choice — enter 1-{min(len(files),50)} or 0")
+        except (ValueError, KeyboardInterrupt):
+            return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -225,60 +225,50 @@ def _print_correlator_result(result: dict, quiet: bool = False) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _check_environment() -> bool:
-    """Verify all required dependencies and API keys are present."""
+    import shutil
+    from tools.faiss_store import is_index_ready
     ok = True
     checks = []
 
-    # GROQ_API_KEY
-    if os.getenv("GROQ_API_KEY"):
-        checks.append(("GROQ_API_KEY",  "✓", "set"))
-    else:
-        checks.append(("GROQ_API_KEY",  "✗", "MISSING - export GROQ_API_KEY=..."))
+    checks.append(("GROQ_API_KEY",
+                   "✓" if os.getenv("GROQ_API_KEY") else "✗",
+                   "set" if os.getenv("GROQ_API_KEY") else "MISSING"))
+    checks.append(("NVD_API_KEY",
+                   "~" if not os.getenv("NVD_API_KEY") else "✓",
+                   "set" if os.getenv("NVD_API_KEY") else "not set (rate limited)"))
+    checks.append(("ABUSEIPDB_API_KEY",
+                   "✓" if os.getenv("ABUSEIPDB_API_KEY") else "~",
+                   "set" if os.getenv("ABUSEIPDB_API_KEY") else "not set (threat intel disabled)"))
+    checks.append(("VIRUSTOTAL_API_KEY",
+                   "✓" if os.getenv("VIRUSTOTAL_API_KEY") else "~",
+                   "set" if os.getenv("VIRUSTOTAL_API_KEY") else "not set"))
+    checks.append(("IMAP_USER",
+                   "✓" if os.getenv("IMAP_USER") else "~",
+                   "set" if os.getenv("IMAP_USER") else "not set (IMAP watch disabled)"))
+    checks.append(("NOTIFY_SMTP_USER",
+                   "✓" if os.getenv("NOTIFY_SMTP_USER") else "~",
+                   "set" if os.getenv("NOTIFY_SMTP_USER") else "not set (notifications disabled)"))
+    checks.append(("nmap binary",
+                   "✓" if shutil.which("nmap") else "~",
+                   "found" if shutil.which("nmap") else "not found (ip_agent disabled)"))
+    checks.append(("FAISS index",
+                   "✓" if is_index_ready() else "~",
+                   "ready" if is_index_ready() else "not built — run --build-index"))
+
+    if not os.getenv("GROQ_API_KEY"):
         ok = False
 
-    # NVD_API_KEY (optional but recommended)
-    if os.getenv("NVD_API_KEY"):
-        checks.append(("NVD_API_KEY",   "✓", "set"))
-    else:
-        checks.append(("NVD_API_KEY",   "~", "not set - NVD rate limit applies (public)"))
-
-    # nmap binary
-    import shutil
-    if shutil.which("nmap"):
-        checks.append(("nmap binary",   "✓", "found"))
-    else:
-        checks.append(("nmap binary",   "~", "not found - ip_agent will be unavailable"))
-
-    # FAISS index
-    from tools.faiss_store import is_index_ready
-    if is_index_ready():
-        checks.append(("FAISS index",   "✓", "ready"))
-    else:
-        checks.append(("FAISS index",   "~",
-                        "not built - run: python main.py --build-index"))
-
-    # Python packages
-    for pkg in ("groq", "faiss", "sentence_transformers", "nmap", "pandas"):
-        real_pkg = "faiss" if pkg == "faiss" else pkg
-        try:
-            __import__(real_pkg if real_pkg != "faiss" else "faiss")
-            checks.append((f"pkg:{pkg}", "✓", "installed"))
-        except ImportError:
-            checks.append((f"pkg:{pkg}", "✗", f"pip install {pkg}"))
-            ok = False
-
     print("\n  Environment check:")
-    print("  " + "-" * 50)
+    print("  " + "─"*50)
     for name, status, detail in checks:
-        sym = {"✓": "OK", "✗": "FAIL", "~": "WARN"}.get(status, "?")
+        sym = {"✓":"OK","✗":"FAIL","~":"WARN"}.get(status,"?")
         print(f"  [{sym:4}] {name:<22} {detail}")
     print()
-
     return ok
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Argument parsing
+# Argument parser
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -289,48 +279,58 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=__doc__,
     )
 
-    # ── Input sources ─────────────────────────────────────────────────────────
-    inputs = p.add_argument_group("Input sources (mix and match)")
-    inputs.add_argument("--email",      metavar="FILE",
-                        help="Path to a .eml or .txt email file")
-    inputs.add_argument("--email-text", metavar="TEXT",
-                        help="Raw email string (inline)")
-    inputs.add_argument("--log",        metavar="FILE",
-                        help="Path to a log file")
-    inputs.add_argument("--log-text",   metavar="TEXT",
-                        help="Raw log text (inline)")
-    inputs.add_argument("--ip",         metavar="TARGET",
-                        help="IP address, hostname, or CIDR to scan")
-    inputs.add_argument("--ip-text",    metavar="TARGET",
-                        help="Alias for --ip (inline)")
+    # ── Standard mode inputs ──────────────────────────────────────────────────
+    si = p.add_argument_group("Standard mode — direct inputs")
+    si.add_argument("--email",      metavar="FILE",   help="Email file (.eml/.txt)")
+    si.add_argument("--email-text", metavar="TEXT",   help="Raw email string")
+    si.add_argument("--email-dir",  metavar="DIR",    help="Pick email from directory")
+    si.add_argument("--log",        metavar="FILE",   help="Log file")
+    si.add_argument("--log-text",   metavar="TEXT",   help="Raw log text")
+    si.add_argument("--log-dir",    metavar="DIR",    help="Pick log from directory")
+    si.add_argument("--ip",         metavar="TARGET", help="IP / hostname / CIDR")
+    si.add_argument("--ip-text",    metavar="TARGET", help="Alias for --ip")
 
-    # ── Output options ────────────────────────────────────────────────────────
-    out = p.add_argument_group("Output options")
-    out.add_argument("--output",      metavar="FILE",
-                     help="Save full JSON report to this path")
-    out.add_argument("--quiet",       action="store_true",
-                     help="Print only verdicts and risk scores")
-    out.add_argument("--no-correlate",action="store_true",
-                     help="Skip the correlator (raw agent outputs only)")
-    out.add_argument("--json",        action="store_true",
-                     help="Print raw JSON to stdout (implies --quiet)")
+    # ── Standard mode output ──────────────────────────────────────────────────
+    so = p.add_argument_group("Standard mode — output")
+    so.add_argument("--output",       metavar="FILE",  help="Save JSON report")
+    so.add_argument("--quiet",        action="store_true")
+    so.add_argument("--no-correlate", action="store_true")
+    so.add_argument("--json",         action="store_true", help="Raw JSON to stdout")
+
+    # ── Continuous monitoring mode ────────────────────────────────────────────
+    cm = p.add_argument_group("Continuous monitoring mode")
+    cm.add_argument("--watch-log",         metavar="FILE",   help="Tail this log file")
+    cm.add_argument("--watch-email-imap",  action="store_true", help="Poll IMAP inbox")
+    cm.add_argument("--watch-ip",          metavar="TARGET", help="Recurring Nmap scan")
+    cm.add_argument("--watch-all",         action="store_true",
+                    help="Enable all configured watchers simultaneously")
+    cm.add_argument("--interval",          type=int, default=60,
+                    help="Log/IMAP check interval in seconds (default: 60)")
+    cm.add_argument("--ip-interval",       type=int, default=300,
+                    help="IP scan interval in seconds (default: 300)")
+    cm.add_argument("--log-min-lines",     type=int, default=3,
+                    help="Min new log lines to trigger analysis (default: 3)")
+    cm.add_argument("--alert-log",         metavar="FILE", default="alerts.jsonl",
+                    help="Alert log file path (default: alerts.jsonl)")
+    cm.add_argument("--no-notify",         action="store_true",
+                    help="Disable email notifications in watch mode")
+    cm.add_argument("--min-severity",      type=int, default=1,
+                    help="Min alert severity to notify (1=low,2=suspicious,3=high,4=critical)")
 
     # ── Utility ───────────────────────────────────────────────────────────────
-    util = p.add_argument_group("Utility")
-    util.add_argument("--build-index", action="store_true",
-                      help="Build FAISS email index from data/raw_emails/")
-    util.add_argument("--force-rebuild", action="store_true",
-                      help="Force rebuild of FAISS index even if it exists")
-    util.add_argument("--check",      action="store_true",
-                      help="Check environment and exit")
-    util.add_argument("--verbose",    action="store_true",
-                      help="Enable DEBUG logging")
+    ut = p.add_argument_group("Utility")
+    ut.add_argument("--build-index",   action="store_true")
+    ut.add_argument("--force-rebuild", action="store_true")
+    ut.add_argument("--check",         action="store_true")
+    ut.add_argument("--monitor-status",action="store_true",
+                    help="Show watch mode config without starting")
+    ut.add_argument("--verbose",       action="store_true")
 
     return p
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Input loading
+# Standard mode pipeline
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _load_file(path: str, label: str) -> str:
@@ -338,133 +338,180 @@ def _load_file(path: str, label: str) -> str:
     if not p.exists():
         log.error("%s file not found: %s", label, path)
         sys.exit(1)
-    try:
-        return p.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        log.error("Cannot read %s file %s: %s", label, path, exc)
-        sys.exit(1)
+    return p.read_text(encoding="utf-8", errors="replace")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Main pipeline
-# ══════════════════════════════════════════════════════════════════════════════
-
-def run(args: argparse.Namespace) -> dict:
-    """
-    Execute the full pipeline based on parsed CLI arguments.
-
-    Returns
-    -------
-    dict — the complete report (all agent results + correlator if applicable)
-    """
+def run_standard(args: argparse.Namespace) -> dict:
     from agents.dispatcher import dispatch
     from agents.correlator import correlate
 
     report: dict = {
-        "meta":    {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")},
-        "agents":  [],
+        "meta":       {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")},
+        "agents":     [],
         "correlator": None,
     }
-
     agent_results: list[dict] = []
     quiet = args.quiet or args.json
-
-    # ── Collect tasks ─────────────────────────────────────────────────────────
     tasks: list[dict] = []
 
-    email_text = args.email_text or (_load_file(args.email, "email") if args.email else None)
+    # ── Resolve email input ───────────────────────────────────────────────────
+    email_text = None
+    if args.email_text:
+        email_text = args.email_text
+    elif args.email:
+        email_text = _load_file(args.email, "email")
+    elif args.email_dir:
+        email_text = _pick_file(args.email_dir, [".eml", ".txt", ""], "EMAIL")
+        if not email_text:
+            log.info("No email selected — skipping email agent")
     if email_text:
         tasks.append({"type": "email", "payload": email_text})
 
-    log_text = args.log_text or (_load_file(args.log, "log") if args.log else None)
+    # ── Resolve log input ─────────────────────────────────────────────────────
+    log_text = None
+    if args.log_text:
+        log_text = args.log_text
+    elif args.log:
+        log_text = _load_file(args.log, "log")
+    elif args.log_dir:
+        log_text = _pick_file(args.log_dir, [".log", ".txt", ""], "LOG")
+        if not log_text:
+            log.info("No log selected — skipping log agent")
     if log_text:
         tasks.append({"type": "log", "payload": log_text})
 
+    # ── Resolve IP input ──────────────────────────────────────────────────────
     ip_target = args.ip or args.ip_text
     if ip_target:
         tasks.append({"type": "ip", "payload": ip_target})
 
     if not tasks:
-        log.error("No input provided. Use --email, --log, or --ip.")
+        log.error("No input provided. Use --email, --log, --ip or their -dir / -text variants.")
         sys.exit(1)
 
-    # ── Run each agent via dispatcher ─────────────────────────────────────────
+    # ── Run agents ────────────────────────────────────────────────────────────
     for task in tasks:
         t_type = task["type"].upper()
-        log.info("─" * 40)
         log.info("Dispatching: %s", t_type)
         t0 = time.perf_counter()
-
         try:
             result = dispatch(task)
         except Exception as exc:
             log.error("%s agent failed: %s", t_type, exc)
             result = {
-                "agent":      task["type"],
-                "verdict":    "uncertain",
-                "risk_score": 0.0,
-                "confidence": 0.0,
-                "reasoning":  str(exc),
-                "indicators": [f"agent_error: {exc}"],
+                "agent": task["type"], "verdict": "uncertain",
+                "risk_score": 0.0, "confidence": 0.0,
+                "reasoning": str(exc), "indicators": [],
             }
-
-        elapsed = time.perf_counter() - t0
-        log.info("%s agent completed in %.1f s", t_type, elapsed)
-        result["_duration_secs"] = round(elapsed, 2)
-
+        result["_duration_secs"] = round(time.perf_counter() - t0, 2)
         agent_results.append(result)
         report["agents"].append(result)
-
         if not args.json:
             _print_agent_result(result, quiet=quiet)
 
-    # ── Correlate if multiple agents OR always if only 1 ─────────────────────
+    # ── Correlate ─────────────────────────────────────────────────────────────
     if not args.no_correlate:
-        log.info("─" * 40)
         log.info("Running correlator …")
         t0 = time.perf_counter()
-
         try:
-            corr_result = correlate(agent_results)
+            corr = correlate(agent_results)
         except Exception as exc:
             log.error("Correlator failed: %s", exc)
-            corr_result = {
-                "agent":         "correlator",
-                "verdict":       "uncertain",
-                "unified_risk":  0.0,
-                "confidence":    0.0,
-                "reasoning":     str(exc),
-                "correlations":  [],
-                "recommendations": [],
-                "agent_summary": {},
-                "indicators":    [],
-                "unified_indicators": [],
+            corr = {
+                "agent":"correlator","verdict":"uncertain","unified_risk":0.0,
+                "confidence":0.0,"reasoning":str(exc),"correlations":[],
+                "recommendations":[],"agent_summary":{},"indicators":[],
+                "unified_indicators":[],"memory_matches":[],"mitre_techniques":[],
             }
-
-        elapsed = time.perf_counter() - t0
-        log.info("Correlator completed in %.1f s", elapsed)
-        corr_result["_duration_secs"] = round(elapsed, 2)
-
-        report["correlator"] = corr_result
-
+        corr["_duration_secs"] = round(time.perf_counter() - t0, 2)
+        report["correlator"] = corr
         if not args.json:
-            _print_correlator_result(corr_result, quiet=quiet)
+            _print_correlator_result(corr, quiet=quiet)
 
-    # ── Notify (after correlator) ─────────────────────────────────────────────
-    if not args.no_correlate and not args.json:
-        try:
-            from tools.notifier import notify
-            log.info("Sending email notification …")
-            ok = notify(report)
-            if ok:
-                if _RICH:
-                    console.print("[dim]Email notification sent.[/dim]")
-                else:
-                    print("  Email notification sent.")
-        except Exception as exc:
-            log.warning("Notification failed (non-fatal): %s", exc)
+        # ── Notify ────────────────────────────────────────────────────────────
+        if not args.json:
+            try:
+                from tools.notifier import notify
+                notify(report)
+            except Exception as exc:
+                log.warning("Notification failed (non-fatal): %s", exc)
 
     return report
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Continuous monitoring mode
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_monitor(args: argparse.Namespace) -> None:
+    from monitor import MonitorEngine
+
+    engine = MonitorEngine(
+        alert_log    = args.alert_log,
+        notify       = not args.no_notify,
+        min_severity = args.min_severity,
+    )
+
+    # Determine which watchers to add
+    watch_log   = args.watch_log
+    watch_imap  = args.watch_email_imap
+    watch_ip    = args.watch_ip
+
+    # --watch-all enables everything that is configured
+    if args.watch_all:
+        watch_imap = True
+        if not watch_log and not watch_ip:
+            log.warning(
+                "--watch-all set but neither --watch-log nor --watch-ip provided. "
+                "Only IMAP watcher will start."
+            )
+
+    if not watch_log and not watch_imap and not watch_ip:
+        log.error(
+            "No watchers configured. Add one or more of:\n"
+            "  --watch-log FILE\n"
+            "  --watch-email-imap\n"
+            "  --watch-ip TARGET\n"
+            "  --watch-all"
+        )
+        sys.exit(1)
+
+    if watch_log:
+        engine.add_log_watcher(
+            watch_log,
+            interval  = args.interval,
+            min_lines = args.log_min_lines,
+        )
+        log.info("Log watcher configured: %s (interval=%ds)", watch_log, args.interval)
+
+    if watch_imap:
+        imap_configured = bool(os.getenv("IMAP_USER") and os.getenv("IMAP_PASS"))
+        if not imap_configured:
+            log.error(
+                "IMAP watch requested but IMAP_USER or IMAP_PASS not set in .env\n"
+                "Add:\n  IMAP_HOST=imap.gmail.com\n  IMAP_USER=you@gmail.com\n"
+                "  IMAP_PASS=your-app-password"
+            )
+            sys.exit(1)
+        engine.add_imap_watcher(interval=args.interval)
+        log.info("IMAP watcher configured (interval=%ds)", args.interval)
+
+    if watch_ip:
+        engine.add_ip_watcher(
+            watch_ip,
+            interval = args.ip_interval,
+            drift    = 0.10,
+        )
+        log.info("IP watcher configured: %s (interval=%ds)", watch_ip, args.ip_interval)
+
+    if args.monitor_status:
+        print("\n  Watch mode configuration:")
+        for w in engine.status()["watchers"]:
+            print(f"    {w['name']}  interval={w['interval']}s")
+        print()
+        return
+
+    engine.run()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -477,6 +524,13 @@ def main() -> None:
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Load .env
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
 
     if not args.json:
         _print_banner()
@@ -491,34 +545,43 @@ def main() -> None:
         build_index(force=args.force_rebuild)
         sys.exit(0)
 
-    # ── Pipeline ──────────────────────────────────────────────────────────────
-    t_total = time.perf_counter()
-    report  = run(args)
-    elapsed = time.perf_counter() - t_total
+    # ── Detect mode ───────────────────────────────────────────────────────────
+    is_watch_mode = any([
+        args.watch_log,
+        args.watch_email_imap,
+        args.watch_ip,
+        args.watch_all,
+        args.monitor_status,
+    ])
 
-    report["meta"]["total_duration_secs"] = round(elapsed, 2)
+    if is_watch_mode:
+        # ── Continuous monitoring mode ─────────────────────────────────────
+        run_monitor(args)
 
-    # ── JSON output ───────────────────────────────────────────────────────────
-    if args.json:
-        print(json.dumps(report, indent=2, default=str))
+    else:
+        # ── Standard mode ──────────────────────────────────────────────────
+        t0     = time.perf_counter()
+        report = run_standard(args)
+        elapsed= time.perf_counter() - t0
+        report.setdefault("meta",{})["total_duration_secs"] = round(elapsed, 2)
 
-    # ── Save report ───────────────────────────────────────────────────────────
-    if args.output:
-        out_path = Path(args.output)
-        out_path.write_text(
-            json.dumps(report, indent=2, default=str), encoding="utf-8"
-        )
+        if args.json:
+            print(json.dumps(report, indent=2, default=str))
+
+        if args.output:
+            out = Path(args.output)
+            out.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+            if not args.json:
+                if _RICH:
+                    console.print(f"[dim]Report saved → {out}[/dim]")
+                else:
+                    print(f"  Report saved → {out}")
+
         if not args.json:
             if _RICH:
-                console.print(f"\n[dim]Report saved → {out_path}[/dim]")
+                console.print(f"[dim]Total time: {elapsed:.1f}s[/dim]\n")
             else:
-                print(f"\n  Report saved → {out_path}")
-
-    if not args.json:
-        if _RICH:
-            console.print(f"[dim]Total time: {elapsed:.1f} s[/dim]\n")
-        else:
-            print(f"  Total time: {elapsed:.1f} s\n")
+                print(f"  Total time: {elapsed:.1f}s\n")
 
 
 if __name__ == "__main__":
