@@ -19,6 +19,9 @@
    - 6.4 [faiss_store.py](#64-faiss_storepy--vector-similarity-search)
    - 6.5 [qdrant_store.py](#65-qdrant_storepy--persistent-threat-memory)
    - 6.6 [mitre_mapper.py](#66-mitre_mapperpy--mitre-attck-mapping-engine)
+   - 6.7 [threat_intel.py](#67-threat_intelpy--threat-intelligence-client)
+   - 6.8 [report_generator.py](#68-report_generatorpy--pdf-report-generator)
+   - 6.9 [notifier.py](#69-notifierpy--email-notification-system)
 7. [Agents Layer — Detailed Breakdown](#7-agents-layer--detailed-breakdown)
    - 7.1 [email_agent.py](#71-email_agentpy--email-verification-agent)
    - 7.2 [log_agent.py](#72-log_agentpy--log-analyzer-agent)
@@ -26,7 +29,8 @@
    - 7.4 [correlator.py](#74-correlatorpy--cross-domain-correlator)
    - 7.5 [dispatcher.py](#75-dispatcherpy--task-dispatcher)
    - 7.6 [main.py](#76-mainpy--cli-entry-point)
-   - 7.7 [dashboard/api.py](#77-dashboardapipy--web-ui-backend)
+   - 7.7 [monitor.py](#77-monitorpy--continuous-monitoring-engine)
+   - 7.8 [dashboard/api.py](#78-dashboardapipy--web-ui-backend)
 8. [Data Layer](#8-data-layer)
 9. [How to Run & Test](#9-how-to-run--test)
 10. [Current Progress Summary](#10-current-progress-summary)
@@ -118,6 +122,9 @@ Each agent follows a **Retrieval-Augmented Generation (RAG)** pattern:
 │  nvd_client.py   → NIST NVD CVE lookups                        │
 │  faiss_store.py  → Vector similarity search                     │
 │  qdrant_store.py → Persistent threat memory                     │
+│  threat_intel.py → AbuseIPDB, VirusTotal, and Shodan lookups   │
+│  notifier.py     → Email notification system with PDFs         │
+│  report_generator.py → PDF Threat Report generator             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -155,7 +162,11 @@ cyber-mas/
 │   ├── prompts.py        # ✅ DONE — All chain-of-thought prompt templates
 │   ├── nvd_client.py     # ✅ DONE — NVD REST API client for CVE lookups
 │   ├── faiss_store.py    # ✅ DONE — FAISS vector store for similarity search
-│   └── qdrant_store.py   # ✅ DONE — Qdrant vector database for threat memory
+│   ├── qdrant_store.py   # ✅ DONE — Qdrant vector database for threat memory
+│   ├── threat_intel.py   # ✅ DONE — AbuseIPDB, VirusTotal, Shodan client
+│   ├── notifier.py       # ✅ DONE — Email notification system
+│   ├── report_generator.py # ✅ DONE — PDF report generator
+│   └── mitre_mapper.py   # ✅ DONE — MITRE ATT&CK mapping engine
 │
 ├── data/                 # Data directories for agent inputs
 │   ├── faiss_index/      # FAISS index files (auto-generated, git-ignored content)
@@ -236,6 +247,7 @@ pip install -r requirements.txt
 | `fastapi`              | latest  | Web framework for the dashboard API                                    |
 | `uvicorn[standard]`    | latest  | ASGI server to run the FastAPI application                             |
 | `python-multipart`     | latest  | Support for form data parsing in FastAPI                               |
+| `reportlab`            | latest  | Generates PDF threat reports                                           |
 
 ---
 
@@ -571,6 +583,44 @@ def get_attack_chain(techniques: list[MitreTechnique]) -> list[str]:
 
 ---
 
+### 6.7 `threat_intel.py` — Threat Intelligence Client
+
+**Status: ✅ Fully implemented and tested**
+
+**Purpose:** Enriches extracted IP addresses with real-time reputation data from AbuseIPDB, VirusTotal, and Shodan. Used by the IP agent and correlator to adjust risk scores and recommend blocking malicious IPs.
+
+**Key Features:**
+- Gracefully skips sources if their API keys are omitted.
+- Excludes private/local IP addresses automatically.
+- Maps threat intelligence tags directly to MITRE ATT&CK techniques (e.g. `brute-force` -> T1110).
+
+---
+
+### 6.8 `report_generator.py` — PDF Report Generator
+
+**Status: ✅ Fully implemented and tested**
+
+**Purpose:** Converts completed analysis reports into professional multi-page PDFs using ReportLab.
+
+**Key Features:**
+- Generates a styled cover page with verdict and risk score.
+- Includes executive summaries, agent-specific details, MITRE ATT&CK mappings, and actionable recommendations.
+- Automatically attached to email notifications.
+
+---
+
+### 6.9 `notifier.py` — Email Notification System
+
+**Status: ✅ Fully implemented and tested**
+
+**Purpose:** Sends HTML email alerts with PDF reports attached when a threat exceeds a configured severity threshold.
+
+**Key Features:**
+- Configurable via environment variables (SMTP host, port, user, etc.).
+- Includes inline HTML rendering of correlation rules, MITRE attack chains, and unified risk scores.
+
+---
+
 ## 7. Agents Layer — Detailed Breakdown
 
 The `agents/` package contains the five specialized agents. Each agent file currently exists as a **stub** (placeholder comment only) — the logic will be implemented next.
@@ -719,7 +769,21 @@ python main.py --build-index
 
 ---
 
-### 7.7 `dashboard/api.py` — Web UI Backend
+### 7.7 `monitor.py` — Continuous Monitoring Engine
+
+**Status: ✅ Fully implemented and tested**
+
+**Purpose:** Orchestrates parallel threads to continuously monitor logs, email inboxes, and network targets.
+
+**Key Features:**
+- **LogWatcher:** Tails a log file and triggers analysis when new lines are appended.
+- **EmailImapWatcher:** Polls an IMAP mailbox for UNSEEN emails and automatically analyses them.
+- **IPWatcher:** Runs recurring Nmap scans and alerts on drift (new ports, CVEs, or risk changes).
+- Shared thread-safe queue dispatches alerts to the terminal, email notifier, and a JSONL log file.
+
+---
+
+### 7.8 `dashboard/api.py` — Web UI Backend
 
 **Status: ✅ Fully implemented and tested**
 
