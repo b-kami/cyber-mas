@@ -187,17 +187,80 @@ cyber-mas/
 
 ### `.env` — Secret Configuration (git-ignored)
 
-This file holds API keys. It is **never committed** to version control.
+This file holds API keys and credentials. It is **never committed** to version control.
 
 ```env
+# ── LLM & Threat Intelligence ─────────────────────────────────
 GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 NVD_API_KEY=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ABUSEIPDB_API_KEY=your-key-here
+VIRUSTOTAL_API_KEY=your-key-here
+SHODAN_API_KEY=your-key-here
+
+# ── Email Notifications (SMTP) ────────────────────────────────
+NOTIFY_ENABLED=true
+NOTIFY_SMTP_HOST=smtp.gmail.com
+NOTIFY_SMTP_PORT=587
+NOTIFY_SMTP_USER=your-email@gmail.com
+NOTIFY_SMTP_PASS=your-app-password
+NOTIFY_FROM=your-email@gmail.com
+NOTIFY_TO=alert-recipient@example.com
+NOTIFY_ON_VERDICT=low
+
+# ── IMAP Email Watcher (Email Monitoring) ─────────────────────
+IMAP_HOST=imap.gmail.com
+IMAP_PORT=993
+IMAP_USER=your-email@gmail.com
+IMAP_PASS=your-app-password
+IMAP_FOLDER=INBOX
+IMAP_SSL=true
+IMAP_MARK_READ=false
 ```
+
+#### LLM & Threat Intelligence Variables
+
+| Variable           | Required? | Purpose                                                       |
+|-------------------|-----------|---------------------------------------------------------------|
+| `GROQ_API_KEY`    | **Yes**   | Authenticates with the Groq API to access LLaMA 3.3-70B      |
+| `NVD_API_KEY`     | Optional  | Raises NVD rate limit from 5 to 50 requests per 30 seconds   |
+| `ABUSEIPDB_API_KEY` | Optional | AbuseIPDB API for checking malicious IPs                     |
+| `VIRUSTOTAL_API_KEY` | Optional | VirusTotal API for file/URL scanning                         |
+| `SHODAN_API_KEY`  | Optional  | Shodan API for internet-facing device discovery              |
+
+#### Email Notification Variables (SMTP)
+
+| Variable          | Required? | Purpose                                                      |
+|-------------------|-----------|--------------------------------------------------------------|
+| `NOTIFY_ENABLED`  | Yes       | Enable/disable email notifications (`true` or `false`)      |
+| `NOTIFY_SMTP_HOST` | Yes (if enabled) | SMTP server hostname (e.g., `smtp.gmail.com`)        |
+| `NOTIFY_SMTP_PORT` | Yes (if enabled) | SMTP port (`587` for TLS, `465` for SSL)            |
+| `NOTIFY_SMTP_USER` | Yes (if enabled) | Email account username                                |
+| `NOTIFY_SMTP_PASS` | Yes (if enabled) | App-specific password (not regular password for Gmail) |
+| `NOTIFY_FROM`     | Yes (if enabled) | Sender email address                                  |
+| `NOTIFY_TO`       | Yes (if enabled) | Recipients (comma-separated for multiple)             |
+| `NOTIFY_ON_VERDICT` | Optional | Minimum alert severity to notify (`low`, `medium`, `high`, `critical`) |
+
+**📧 Gmail Setup for Notifications:**
+1. Enable 2-Factor Authentication on your Gmail account
+2. Generate an [App Password](https://myaccount.google.com/apppasswords)
+3. Use the 16-character app password as `NOTIFY_SMTP_PASS`
+
+#### IMAP Email Watcher Variables
 
 | Variable       | Required? | Purpose                                                     |
 |----------------|-----------|-------------------------------------------------------------|
-| `GROQ_API_KEY` | **Yes**   | Authenticates with the Groq API to access LLaMA 3.3-70B    |
-| `NVD_API_KEY`  | Optional  | Raises NVD rate limit from 5 to 50 requests per 30 seconds |
+| `IMAP_HOST`    | Yes       | IMAP server hostname (e.g., `imap.gmail.com`)              |
+| `IMAP_PORT`    | Yes       | IMAP port (`993` for SSL, `143` for STARTTLS)             |
+| `IMAP_USER`    | Yes       | Email account username (same as SMTP for consistency)      |
+| `IMAP_PASS`    | Yes       | App-specific password (same as SMTP notification)          |
+| `IMAP_FOLDER`  | Optional  | Mailbox folder to monitor (default: `INBOX`)               |
+| `IMAP_SSL`     | Optional  | Use SSL/TLS connection (`true` by default)                 |
+| `IMAP_MARK_READ` | Optional | Mark analyzed emails as read (`false` by default)          |
+
+**📧 Gmail Setup for IMAP Monitoring:**
+1. Same as notifications — enable 2FA and generate an App Password
+2. Enable IMAP access in Gmail settings
+3. Use the same credentials as email notifications (recommended)
 
 ### `.env.example` — Template
 
@@ -953,6 +1016,73 @@ import dotenv, pydantic, rich
 print('All dependencies OK')
 "
 ```
+
+### Running the Email Watcher
+
+The system includes an **IMAP email watcher** that monitors a mailbox for new emails and automatically analyzes them for phishing, spoofing, and social engineering attacks.
+
+#### Prerequisites
+
+1. **Gmail Account**: Enable 2-Factor Authentication
+2. **App Password**: Generate a 16-character app password from [Google Account Settings](https://myaccount.google.com/apppasswords)
+3. **Enable IMAP**: In Gmail settings, enable "Less secure app access" or use the app password method
+
+#### Configuration
+
+Edit your `.env` file with:
+
+```env
+# ── IMAP Email Watcher ──────────────────────────────────────
+IMAP_HOST=imap.gmail.com
+IMAP_PORT=993
+IMAP_USER=your-email@gmail.com
+IMAP_PASS=your-16-char-app-password
+IMAP_FOLDER=INBOX
+IMAP_SSL=true
+IMAP_MARK_READ=false
+
+# ── Email Notifications (Optional) ─────────────────────────
+NOTIFY_ENABLED=true
+NOTIFY_SMTP_HOST=smtp.gmail.com
+NOTIFY_SMTP_PORT=587
+NOTIFY_SMTP_USER=your-email@gmail.com
+NOTIFY_SMTP_PASS=your-16-char-app-password
+NOTIFY_FROM=your-email@gmail.com
+NOTIFY_TO=your-alert-recipient@example.com
+NOTIFY_ON_VERDICT=medium
+```
+
+#### Running the Watcher
+
+```bash
+# Run email watcher with 60-second polling interval
+python main.py --watch-email-imap --interval 60
+
+# Combine email watcher with log monitoring
+python main.py --watch-email-imap --watch-log /var/log/auth.log --interval 60
+
+# Monitor all sources (email, logs, IP)
+python main.py --watch-all --log /var/log/auth.log --ip 192.168.1.100 --interval 60
+```
+
+#### What Happens
+
+1. **Connects to IMAP**: Authenticates using `IMAP_USER` and `IMAP_PASS`
+2. **Polls for UNSEEN emails**: Every `--interval` seconds
+3. **Analyzes each email**: Passes to the Email Agent for phishing detection
+4. **Maps to MITRE ATT&CK**: Correlates findings with known attack techniques
+5. **Sends alerts**: If `NOTIFY_ENABLED=true`, sends email notifications for suspicious messages
+6. **Stores in Qdrant**: Persists threat data for cross-session correlation
+
+#### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `[WARN] IMAP_USER not set` | Add `IMAP_USER` and `IMAP_PASS` to `.env` |
+| `IMAP connection failed: [SSL]` | Verify `IMAP_PORT=993` if using SSL, or `143` for STARTTLS |
+| `Authentication failed` | Ensure you're using an app password, not your regular password |
+| `Folder does not exist` | Check that `IMAP_FOLDER` matches a folder in your mailbox |
+| No notifications sent | Verify `NOTIFY_ENABLED=true` and SMTP credentials are correct |
 
 ---
 

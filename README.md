@@ -152,7 +152,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure API keys
+### 2. Configure API keys & credentials
 
 ```bash
 cp .env.example .env
@@ -161,9 +161,34 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-GROQ_API_KEY=gsk_...        # Required — https://console.groq.com
-NVD_API_KEY=xxxxxxxx...     # Optional — https://nvd.nist.gov/developers/request-an-api-key
+# Required
+GROQ_API_KEY=gsk_...                 # https://console.groq.com
+NVD_API_KEY=xxxxxxxx...              # Optional — https://nvd.nist.gov/developers/request-an-api-key
+
+# Optional: Email notifications (SMTP)
+NOTIFY_ENABLED=true
+NOTIFY_SMTP_HOST=smtp.gmail.com
+NOTIFY_SMTP_PORT=587
+NOTIFY_SMTP_USER=your-email@gmail.com
+NOTIFY_SMTP_PASS=your-app-password   # Gmail: use app password, not regular password
+NOTIFY_FROM=your-email@gmail.com
+NOTIFY_TO=recipient@example.com
+NOTIFY_ON_VERDICT=medium
+
+# Optional: Email watcher (IMAP)
+IMAP_HOST=imap.gmail.com
+IMAP_PORT=993
+IMAP_USER=your-email@gmail.com
+IMAP_PASS=your-app-password          # Same as SMTP recommended
+IMAP_FOLDER=INBOX
+IMAP_SSL=true
+IMAP_MARK_READ=false
 ```
+
+**📧 Gmail Setup:**
+1. Enable 2-Factor Authentication
+2. Generate an [App Password](https://myaccount.google.com/apppasswords)
+3. Use the 16-character password for both `NOTIFY_SMTP_PASS` and `IMAP_PASS`
 
 ### 3. Download the SpamAssassin corpus (for Email Agent RAG)
 
@@ -212,6 +237,15 @@ python main.py --email email.eml --json
 
 # Skip correlator
 python main.py --email email.eml --no-correlate
+
+# Monitor emails via IMAP (polling every 60 seconds)
+python main.py --watch-email-imap --interval 60
+
+# Combine email watcher with system log monitoring
+python main.py --watch-email-imap --watch-log /var/log/auth.log --interval 60
+
+# Monitor all sources
+python main.py --watch-all --log /var/log/auth.log --ip 192.168.1.100 --interval 60
 ```
 
 ### 7. Continuous Monitoring
@@ -237,6 +271,73 @@ uvicorn dashboard.api:app --reload --port 8000
 ```
 
 Open [http://localhost:8000](http://localhost:8000) in your browser.
+
+---
+
+## � Email Watcher (IMAP Monitoring)
+
+Real-time email threat detection using IMAP:
+
+```bash
+# Start email watcher (polls every 60 seconds)
+python main.py --watch-email-imap --interval 60
+```
+
+### What It Does
+
+1. **Connects to IMAP** using credentials in `.env`
+2. **Polls for unseen emails** at specified interval
+3. **Analyzes each email** with the Email Agent (phishing detection, spoofing, social engineering)
+4. **Maps to MITRE ATT&CK** via the Correlator
+5. **Sends email alerts** if `NOTIFY_ENABLED=true`
+6. **Stores in Qdrant** for persistent threat memory
+
+### Key Features
+
+- 🔄 Continuous monitoring with configurable polling interval
+- 🔐 SSL/TLS support for secure IMAP connections
+- 📬 Optional auto-marking as read after analysis
+- 🚨 Email notifications for suspicious messages
+- 📊 Integration with Qdrant threat memory and MITRE ATT&CK
+
+### Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| `[WARN] IMAP_USER not set` | Add `IMAP_USER` and `IMAP_PASS` to `.env` |
+| IMAP connection fails | Verify `IMAP_HOST`, `IMAP_PORT` (993 for SSL, 143 for STARTTLS) |
+| Auth fails on Gmail | Use app password, not regular password; enable 2FA first |
+| No notifications | Check `NOTIFY_ENABLED=true` and SMTP settings in `.env` |
+
+---
+
+## 🔔 Email Notifications (SMTP)
+
+Automatic email alerts when threats are detected:
+
+```env
+NOTIFY_ENABLED=true
+NOTIFY_SMTP_HOST=smtp.gmail.com
+NOTIFY_SMTP_PORT=587
+NOTIFY_SMTP_USER=your-email@gmail.com
+NOTIFY_SMTP_PASS=your-app-password
+NOTIFY_FROM=your-email@gmail.com
+NOTIFY_TO=alert-recipient@example.com
+NOTIFY_ON_VERDICT=medium
+```
+
+### Alert Levels
+
+- `low` — Send all alerts (verbose)
+- `medium` — Medium and high-risk threats only
+- `high` — High-risk threats only
+- `critical` — Critical threats only (most selective)
+
+### Works With
+
+- 📧 Email watcher (`--watch-email-imap`)
+- 📋 Log analysis (`--watch-log`)
+- 🌐 IP scanning results
 
 ---
 
